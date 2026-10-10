@@ -46,7 +46,9 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
+          submodules: recursive
           persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
       - name: Validate release metadata
         shell: bash
         env:
@@ -90,6 +92,32 @@ jobs:
               exit 1
             fi
           done
+      - name: Match requested version to Cargo packages at the tag
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          PUBLISH_CRATES_IO: ${{ inputs.publish-crates-io }}
+          CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
+        run: |
+          set -euo pipefail
+          metadata=$(cargo metadata --format-version 1 --no-deps)
+          module_version=$(jq -r --arg name "$MODULE_CRATE" \
+            '[.packages[] | select(.name == $name) | .version] | if length == 1 then .[0] else "" end' \
+            <<<"$metadata")
+          if [[ "$module_version" != "$VERSION" ]]; then
+            echo "module crate $MODULE_CRATE is version ${module_version:-missing}, expected $VERSION" >&2
+            exit 1
+          fi
+          if [[ "$PUBLISH_CRATES_IO" == "true" ]]; then
+            registry_version=$(jq -r --arg name "$CRATES_IO_PACKAGE" \
+              '[.packages[] | select(.name == $name) | .version] | if length == 1 then .[0] else "" end' \
+              <<<"$metadata")
+            if [[ "$registry_version" != "$VERSION" ]]; then
+              echo "crates.io package $CRATES_IO_PACKAGE is version ${registry_version:-missing}, expected $VERSION" >&2
+              exit 1
+            fi
+          fi
 
   native:
     name: verify and package (${{ matrix.host }})
