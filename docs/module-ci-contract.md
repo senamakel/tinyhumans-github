@@ -34,9 +34,10 @@ The per-repository scripts implement this interface:
 
 - `scripts/build-module.sh` and `scripts/build-module.ps1` accept `--crate`,
   `--version`, `--target`, `--host`, `--extra-files-json`, and `--output-dir`
-  (PowerShell uses the corresponding named parameters). They emit exactly one
-  archive named `<crate>-<version>-<host>.tar.gz` or `.zip`, containing the
-  library and its `modules.toml` digest.
+  (PowerShell uses `-Crate`, `-Version`, `-Target`, `-HostKey`,
+  `-ExtraFilesJson`, and `-OutputDir`). They emit exactly one archive named
+  `<crate>-<version>-<host>.tar.gz` or `.zip`, containing the library and its
+  `modules.toml` digest.
 - `scripts/verify-module.sh` and `scripts/verify-module.ps1` accept `--archive`
   / `-Archive` and load the artifact through TinyBus, exercising the module's
   members.
