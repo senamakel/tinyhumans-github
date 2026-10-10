@@ -17,14 +17,14 @@ publishes the same required check names in every caller:
   `feature-tests (windows-latest)`
 
 Each module owns its test commands and platform dependencies. The workflow
-caller supplies the module's coverage command, module loader suite, feature
-suite, and any Ubuntu packages needed to build or test it. The `test` job runs
-the default feature set; the feature-test command runs on all three operating
+caller supplies repository-relative Bash scripts for its coverage gate, loader
+suite, and feature suite, and any Ubuntu packages needed
+to build or test it. The shared workflow validates those script paths before
+running them. The `test` job runs
+the default feature set; the feature-test script runs on all three operating
 systems. The MSRV job and each module-e2e runner read `rust-version` from the
-root `Cargo.toml`, so the compiler version cannot drift from the crate
-declaration. The MSRV job reads it through Cargo metadata; the cross-platform
-E2E runners also use Cargo metadata and normalize manifest paths across
-platforms before selecting the root package. The legacy `msrv` input is
+root package identity in Cargo metadata, so the compiler version cannot drift
+from the crate declaration or depend on OS path spelling. The legacy `msrv` input is
 optional and ignored while existing callers migrate. `msrv-build-targets` can
 provide validated Cargo build groups when a repository deliberately supports
 an older compiler for its public libraries than for optional or unpublished

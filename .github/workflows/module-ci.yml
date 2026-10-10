@@ -3,8 +3,8 @@ name: TinyHumans module CI
 on:
   workflow_call:
     inputs:
-      coverage-command:
-        description: Command that enforces the shared per-file coverage threshold.
+      coverage-script:
+        description: Repository-relative Bash script that enforces the shared per-file coverage threshold.
         type: string
         required: true
       msrv:
@@ -15,16 +15,16 @@ on:
         description: Optional validated Cargo build groups for the declared MSRV.
         type: string
         default: ''
-      module-e2e-command:
-        description: Command that runs the module loader end-to-end suite.
+      module-e2e-script:
+        description: Repository-relative Bash script that runs the module loader end-to-end suite.
         type: string
         required: true
       module-e2e-toolchain:
         description: Compiler for module E2E; defaults to the root package's declared MSRV.
         type: string
         default: declared
-      feature-test-command:
-        description: Command that runs the module's feature-level test suite.
+      feature-test-script:
+        description: Repository-relative Bash script that runs the module's feature-level test suite.
         type: string
         required: true
       apt-packages:
@@ -62,7 +62,17 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - if: inputs.apt-packages != ''
-        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9+.-]+([[:space:]][a-z0-9+.-]+)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
@@ -76,7 +86,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - if: inputs.apt-packages != ''
-        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9+.-]+([[:space:]][a-z0-9+.-]+)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - run: cargo test --workspace
 
   coverage:
@@ -92,7 +112,17 @@ jobs:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: Swatinem/rust-cache@v2
-      - run: ${{ inputs.coverage-command }}
+      - name: Enforce the per-file coverage threshold
+        shell: bash
+        env:
+          COVERAGE_SCRIPT: ${{ inputs.coverage-script }}
+        run: |
+          [[ "$COVERAGE_SCRIPT" =~ ^scripts/[A-Za-z0-9._/-]+\.sh$ && "$COVERAGE_SCRIPT" != *..* ]] || {
+            echo "coverage-script must name a repository-local scripts/*.sh file" >&2
+            exit 2
+          }
+          [[ -f "$COVERAGE_SCRIPT" ]] || { echo "coverage script is missing: $COVERAGE_SCRIPT" >&2; exit 2; }
+          bash "$COVERAGE_SCRIPT"
 
   docs:
     name: docs
@@ -105,7 +135,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - if: inputs.apt-packages != ''
-        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9+.-]+([[:space:]][a-z0-9+.-]+)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - run: cargo doc --workspace --all-features --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
@@ -121,9 +161,9 @@ jobs:
       - id: msrv
         shell: bash
         run: |
-          version="$(cargo metadata --no-deps --format-version 1 --quiet | jq -er '
-            .workspace_root as $root
-            | [.packages[] | select(.manifest_path == ($root + "/Cargo.toml")) | .rust_version]
+          version="$(cargo metadata --format-version 1 --quiet | jq -er '
+            .resolve.root as $root
+            | [.packages[] | select(.id == $root) | .rust_version]
             | first // error("workspace root package must declare rust-version")
           ')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -132,7 +172,17 @@ jobs:
           toolchain: ${{ steps.msrv.outputs.version }}
       - uses: Swatinem/rust-cache@v2
       - if: inputs.apt-packages != ''
-        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9+.-]+([[:space:]][a-z0-9+.-]+)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - name: Build with the declared MSRV
         shell: bash
         env:
@@ -189,10 +239,9 @@ jobs:
       - id: msrv
         shell: bash
         run: |
-          version="$(cargo metadata --no-deps --format-version 1 --quiet | jq -er '
-            .workspace_root as $root
-            | ($root + "/Cargo.toml" | gsub("\\\\"; "/")) as $manifest
-            | [.packages[] | select((.manifest_path | gsub("\\\\"; "/")) == $manifest) | .rust_version]
+          version="$(cargo metadata --format-version 1 --quiet | jq -er '
+            .resolve.root as $root
+            | [.packages[] | select(.id == $root) | .rust_version]
             | first // error("workspace root package must declare rust-version")
           ')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -201,7 +250,17 @@ jobs:
           toolchain: ${{ steps.msrv.outputs.version }}
       - uses: Swatinem/rust-cache@v2
       - if: runner.os == 'Linux' && inputs.apt-packages != ''
-        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9+.-]+([[:space:]][a-z0-9+.-]+)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - name: Select the module E2E toolchain
         shell: bash
         env:
@@ -213,7 +272,15 @@ jobs:
             *) echo "module-e2e-toolchain must be 'declared' or 'stable'" >&2; exit 2 ;;
           esac
       - shell: bash
-        run: ${{ inputs.module-e2e-command }}
+        env:
+          MODULE_E2E_SCRIPT: ${{ inputs.module-e2e-script }}
+        run: |
+          [[ "$MODULE_E2E_SCRIPT" =~ ^scripts/[A-Za-z0-9._/-]+\.sh$ && "$MODULE_E2E_SCRIPT" != *..* ]] || {
+            echo "module-e2e-script must name a repository-local scripts/*.sh file" >&2
+            exit 2
+          }
+          [[ -f "$MODULE_E2E_SCRIPT" ]] || { echo "module E2E script is missing: $MODULE_E2E_SCRIPT" >&2; exit 2; }
+          bash "$MODULE_E2E_SCRIPT"
 
   feature-tests:
     name: feature-tests (${{ matrix.os }})
@@ -230,6 +297,24 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - if: runner.os == 'Linux' && inputs.apt-packages != ''
-        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9+.-]+([[:space:]][a-z0-9+.-]+)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - shell: bash
-        run: ${{ inputs.feature-test-command }}
+        env:
+          FEATURE_TEST_SCRIPT: ${{ inputs.feature-test-script }}
+        run: |
+          [[ "$FEATURE_TEST_SCRIPT" =~ ^scripts/[A-Za-z0-9._/-]+\.sh$ && "$FEATURE_TEST_SCRIPT" != *..* ]] || {
+            echo "feature-test-script must name a repository-local scripts/*.sh file" >&2
+            exit 2
+          }
+          [[ -f "$FEATURE_TEST_SCRIPT" ]] || { echo "feature test script is missing: $FEATURE_TEST_SCRIPT" >&2; exit 2; }
+          bash "$FEATURE_TEST_SCRIPT"
