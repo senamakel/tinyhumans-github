@@ -47,10 +47,12 @@ The per-repository scripts implement this interface:
 The release workflow refuses to publish unless it collected exactly 11 native
 archives, or all 17 archives when distro builds are enabled. It creates
 `checksum.toml` with TinyBus and creates the release once; it does not update an
-existing release. Debian and Ubuntu are represented by the Ubuntu 22.04/24.04
-native builds, which already exercise their LTS glibc baselines. Alpine/musl is
-not included because TinyBus currently selects no module artifact for musl
-hosts. FreeBSD is outside the shipped Windows/macOS/Linux product set.
+existing release. Each caller repository must have GitHub immutable releases
+enabled; GitHub enforces immutability on publication. Debian and Ubuntu are
+represented by the Ubuntu 22.04/24.04 native builds, which already exercise
+their LTS glibc baselines. Alpine/musl is not included because TinyBus currently
+selects no module artifact for musl hosts. FreeBSD is outside the shipped
+Windows/macOS/Linux product set.
 
 Do not rename or remove a required job in the shared workflow without updating
 the organization ruleset and the drift check in OpenHuman in the same change.
