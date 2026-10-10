@@ -20,7 +20,7 @@ on:
         type: string
         required: true
       module-e2e-toolchain:
-        description: Compiler for module E2E; defaults to the root package's declared MSRV.
+        description: Compiler for module E2E: declared, stable, or an exact Rust version such as 1.88.0.
         type: string
         default: declared
       feature-test-script:
@@ -40,11 +40,11 @@ jobs:
     name: fmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
@@ -53,14 +53,14 @@ jobs:
     name: clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - if: inputs.apt-packages != ''
         shell: bash
         env:
@@ -79,12 +79,12 @@ jobs:
     name: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - if: inputs.apt-packages != ''
         shell: bash
         env:
@@ -103,15 +103,15 @@ jobs:
     name: coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
         with:
           components: llvm-tools-preview
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@70b10d055da4af0e46b2f7166e710204993798b3 # immutable revision
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Enforce the per-file coverage threshold
         shell: bash
         env:
@@ -128,12 +128,12 @@ jobs:
     name: docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - if: inputs.apt-packages != ''
         shell: bash
         env:
@@ -154,7 +154,7 @@ jobs:
     name: msrv
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
@@ -167,10 +167,10 @@ jobs:
             | first // error("workspace root package must declare rust-version")
           ')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master as of 2026-10-10
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - if: inputs.apt-packages != ''
         shell: bash
         env:
@@ -217,11 +217,11 @@ jobs:
     name: supply-chain
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: EmbarkStudios/cargo-deny-action@9c67a826e39827395bfa619cd85cb2aaeb43cfaa # immutable revision
 
   module-e2e:
     name: module-e2e (${{ matrix.os }})
@@ -231,11 +231,11 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
       - id: msrv
         shell: bash
         run: |
@@ -245,10 +245,10 @@ jobs:
             | first // error("workspace root package must declare rust-version")
           ')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master as of 2026-10-10
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - if: runner.os == 'Linux' && inputs.apt-packages != ''
         shell: bash
         env:
@@ -269,7 +269,14 @@ jobs:
           case "$MODULE_E2E_TOOLCHAIN" in
             declared) ;;
             stable) rustup override set stable ;;
-            *) echo "module-e2e-toolchain must be 'declared' or 'stable'" >&2; exit 2 ;;
+            *)
+              [[ "$MODULE_E2E_TOOLCHAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+                echo "module-e2e-toolchain must be 'declared', 'stable', or an exact X.Y.Z version" >&2
+                exit 2
+              }
+              rustup toolchain install "$MODULE_E2E_TOOLCHAIN" --profile minimal
+              rustup override set "$MODULE_E2E_TOOLCHAIN"
+              ;;
           esac
       - shell: bash
         env:
@@ -290,12 +297,12 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - if: runner.os == 'Linux' && inputs.apt-packages != ''
         shell: bash
         env:

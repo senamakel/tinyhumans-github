@@ -232,22 +232,22 @@ jobs:
       matrix:
         include:
           - host: fedora-43-x86_64
-            image: fedora:43
+            image: fedora:43@sha256:a651ddf48ea28a06ed4e1e6519f51c9f47e7a5a138722ade87369b8fbb7e5b42
             target: x86_64-unknown-linux-gnu
           - host: fedora-43-arm64
-            image: fedora:43
+            image: fedora:43@sha256:a651ddf48ea28a06ed4e1e6519f51c9f47e7a5a138722ade87369b8fbb7e5b42
             target: aarch64-unknown-linux-gnu
           - host: fedora-44-x86_64
-            image: fedora:44
+            image: fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
             target: x86_64-unknown-linux-gnu
           - host: fedora-44-arm64
-            image: fedora:44
+            image: fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
             target: aarch64-unknown-linux-gnu
           - host: archlinux-x86_64
-            image: archlinux:base-devel
+            image: archlinux:base-devel@sha256:996c3a1d6b0d87b01242f6fcd8cfa3ad3eece1a67ab5c8f108e20af1d7b97bdd
             target: x86_64-unknown-linux-gnu
           - host: archlinux-arm64
-            image: menci/archlinuxarm:base-devel
+            image: menci/archlinuxarm:base-devel@sha256:e9caa68ff4162ca297ed6098375c04db6a825a58c0f0e446a7c90cb280310296
             target: aarch64-unknown-linux-gnu
     runs-on: ${{ contains(matrix.host, 'arm64') && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
