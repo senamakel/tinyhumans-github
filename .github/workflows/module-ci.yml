@@ -7,6 +7,10 @@ on:
         description: Command that enforces the shared per-file coverage threshold.
         type: string
         required: true
+      msrv:
+        description: Deprecated compatibility input; MSRV is read from Cargo.toml.
+        type: string
+        default: ''
       module-e2e-command:
         description: Command that runs the module loader end-to-end suite.
         type: string
