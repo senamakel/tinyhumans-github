@@ -25,10 +25,11 @@ root `Cargo.toml`, so the compiler version cannot drift from the crate
 declaration. The MSRV job reads it through Cargo metadata; the cross-platform
 E2E runners also use Cargo metadata and normalize manifest paths across
 platforms before selecting the root package. The legacy `msrv` input is
-optional and ignored while existing callers migrate. `msrv-build-command` can
-override the default all-workspace feature build when a repository deliberately
-supports an older compiler for its public libraries than for optional or
-unpublished workspace crates; the check still installs the root package's
+optional and ignored while existing callers migrate. `msrv-build-targets` can
+provide validated Cargo build groups when a repository deliberately supports
+an older compiler for its public libraries than for optional or unpublished
+workspace crates. Its JSON specifies only package names, feature lists, and
+build flags, not shell commands. The check still installs the root package's
 declared `rust-version`. A caller is ready to become a required-check ruleset
 target only after every supplied command succeeds on its target runners.
 

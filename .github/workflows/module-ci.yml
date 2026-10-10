@@ -11,8 +11,8 @@ on:
         description: Deprecated compatibility input; MSRV is read from Cargo.toml.
         type: string
         default: ''
-      msrv-build-command:
-        description: Optional workspace-specific build command for the declared MSRV.
+      msrv-build-targets:
+        description: Optional validated Cargo build groups for the declared MSRV.
         type: string
         default: ''
       module-e2e-command:
@@ -132,13 +132,32 @@ jobs:
       - name: Build with the declared MSRV
         shell: bash
         env:
-          MSRV_BUILD_COMMAND: ${{ inputs.msrv-build-command }}
+          MSRV_BUILD_TARGETS: ${{ inputs.msrv-build-targets }}
         run: |
-          if [[ -n "$MSRV_BUILD_COMMAND" ]]; then
-            eval "$MSRV_BUILD_COMMAND"
-          else
+          if [[ -z "$MSRV_BUILD_TARGETS" ]]; then
             cargo build --workspace --all-targets --all-features
+            exit
           fi
+          jq -e '
+            type == "array" and length > 0 and all(.[];
+              (.packages | type == "array" and length > 0 and all(.[]; type == "string" and test("^[A-Za-z0-9_-]+$"))) and
+              ((.features // []) | type == "array" and all(.[]; type == "string" and test("^[A-Za-z0-9_-]+$"))) and
+              ((.all_targets // false) | type == "boolean") and
+              ((.all_features // false) | type == "boolean") and
+              ((.no_default_features // false) | type == "boolean")
+            )
+          ' <<< "$MSRV_BUILD_TARGETS" >/dev/null
+          while IFS= read -r target; do
+            args=()
+            while IFS= read -r package; do args+=(--package "$package"); done \
+              < <(jq -r '.packages[]' <<< "$target")
+            while IFS= read -r feature; do args+=(--features "$feature"); done \
+              < <(jq -r '.features[]?' <<< "$target")
+            [[ "$(jq -r '.all_targets // false' <<< "$target")" == true ]] && args+=(--all-targets)
+            [[ "$(jq -r '.all_features // false' <<< "$target")" == true ]] && args+=(--all-features)
+            [[ "$(jq -r '.no_default_features // false' <<< "$target")" == true ]] && args+=(--no-default-features)
+            cargo build "${args[@]}"
+          done < <(jq -c '.[]' <<< "$MSRV_BUILD_TARGETS")
 
   supply-chain:
     name: supply-chain
@@ -168,8 +187,8 @@ jobs:
         run: |
           version="$(cargo metadata --no-deps --format-version 1 --quiet | jq -er '
             .workspace_root as $root
-            | ($root + "/Cargo.toml" | gsub("\\\\"; "/") | ascii_downcase) as $manifest
-            | [.packages[] | select((.manifest_path | gsub("\\\\"; "/") | ascii_downcase) == $manifest) | .rust_version]
+            | ($root + "/Cargo.toml" | gsub("\\\\"; "/")) as $manifest
+            | [.packages[] | select((.manifest_path | gsub("\\\\"; "/")) == $manifest) | .rust_version]
             | first // error("workspace root package must declare rust-version")
           ')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
