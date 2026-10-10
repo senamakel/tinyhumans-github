@@ -1,0 +1,268 @@
+name: TinyHumans module release
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Existing annotated or lightweight tag for the release.
+        type: string
+        required: true
+      version:
+        description: Module version without the leading v.
+        type: string
+        required: true
+      module-crate:
+        description: Dynamic library Cargo package name.
+        type: string
+        required: true
+      extra-packaged-files:
+        description: JSON array of additional files the module package script includes.
+        type: string
+        default: '[]'
+      include-distros:
+        description: Build the Fedora 43/44 and Arch x86_64/arm64 artifacts.
+        type: boolean
+        default: true
+      publish-crates-io:
+        description: Publish the configured crate to crates.io before the GitHub release.
+        type: boolean
+        default: false
+      crates-io-package:
+        description: Cargo package to publish when publish-crates-io is true.
+        type: string
+        default: ''
+    secrets:
+      CARGO_REGISTRY_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate release inputs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate release metadata
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          PUBLISH_CRATES_IO: ${{ inputs.publish-crates-io }}
+          CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "version must be a semver version without a leading v" >&2
+            exit 1
+          fi
+          if [[ -z "$MODULE_CRATE" ]]; then
+            echo "module-crate must not be empty" >&2
+            exit 1
+          fi
+          if [[ "$PUBLISH_CRATES_IO" == "true" ]]; then
+            if [[ -z "$CRATES_IO_PACKAGE" || -z "$CARGO_REGISTRY_TOKEN" ]]; then
+              echo "crates-io-package and CARGO_REGISTRY_TOKEN are required when publishing to crates.io" >&2
+              exit 1
+            fi
+          fi
+
+  native:
+    name: verify and package (${{ matrix.host }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: ubuntu-22.04-x86_64
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - host: ubuntu-22.04-arm64
+            runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+          - host: ubuntu-24.04-x86_64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - host: ubuntu-24.04-arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - host: macos-15-x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - host: macos-15-arm64
+            runner: macos-15
+            target: aarch64-apple-darwin
+          - host: macos-26-x86_64
+            runner: macos-26-intel
+            target: x86_64-apple-darwin
+          - host: macos-26-arm64
+            runner: macos-26
+            target: aarch64-apple-darwin
+          - host: windows-2022-x86_64
+            runner: windows-2022
+            target: x86_64-pc-windows-msvc
+          - host: windows-2025-x86_64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - host: windows-11-arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    needs: validate
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+      - name: Build module package
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_TARGET: ${{ matrix.target }}
+          MODULE_HOST: ${{ matrix.host }}
+          EXTRA_PACKAGED_FILES: ${{ inputs.extra-packaged-files }}
+        run: scripts/build-module.sh --crate "$MODULE_CRATE" --version "$MODULE_VERSION" --target "$MODULE_TARGET" --host "$MODULE_HOST" --extra-files-json "$EXTRA_PACKAGED_FILES" --output-dir release-assets
+      - name: Build module package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_TARGET: ${{ matrix.target }}
+          MODULE_HOST: ${{ matrix.host }}
+          EXTRA_PACKAGED_FILES: ${{ inputs.extra-packaged-files }}
+        run: ./scripts/build-module.ps1 -Crate $env:MODULE_CRATE -Version $env:MODULE_VERSION -Target $env:MODULE_TARGET -HostKey $env:MODULE_HOST -ExtraFilesJson $env:EXTRA_PACKAGED_FILES -OutputDir release-assets
+      - name: Verify built module
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          MODULE_HOST: ${{ matrix.host }}
+          MODULE_VERSION: ${{ inputs.version }}
+        env:
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_HOST: ${{ matrix.host }}
+        run: scripts/verify-module.sh --archive "release-assets/${MODULE_CRATE}-${MODULE_VERSION}-${MODULE_HOST}.tar.gz"
+      - name: Verify built module
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_HOST: ${{ matrix.host }}
+        run: ./scripts/verify-module.ps1 -Archive "release-assets/$env:MODULE_CRATE-$env:MODULE_VERSION-$env:MODULE_HOST.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: module-${{ matrix.host }}
+          path: release-assets/${{ inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.*
+          if-no-files-found: error
+          retention-days: 1
+
+  distro:
+    name: verify and package (${{ matrix.host }})
+    if: inputs.include-distros
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: fedora-43-x86_64
+            image: fedora:43
+            target: x86_64-unknown-linux-gnu
+          - host: fedora-43-arm64
+            image: fedora:43
+            target: aarch64-unknown-linux-gnu
+          - host: fedora-44-x86_64
+            image: fedora:44
+            target: x86_64-unknown-linux-gnu
+          - host: fedora-44-arm64
+            image: fedora:44
+            target: aarch64-unknown-linux-gnu
+          - host: archlinux-x86_64
+            image: archlinux:base-devel
+            target: x86_64-unknown-linux-gnu
+          - host: archlinux-arm64
+            image: menci/archlinuxarm:base-devel
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ contains(matrix.host, 'arm64') && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: recursive
+          persist-credentials: false
+      - name: Build and verify distro module package
+        shell: bash
+        env:
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_TARGET: ${{ matrix.target }}
+          MODULE_HOST: ${{ matrix.host }}
+          DISTRO_IMAGE: ${{ matrix.image }}
+          EXTRA_PACKAGED_FILES: ${{ inputs.extra-packaged-files }}
+        run: scripts/test-distro.sh "$DISTRO_IMAGE" --crate "$MODULE_CRATE" --version "$MODULE_VERSION" --target "$MODULE_TARGET" --host "$MODULE_HOST" --extra-files-json "$EXTRA_PACKAGED_FILES" --output-dir release-assets
+      - uses: actions/upload-artifact@v4
+        with:
+          name: module-${{ matrix.host }}
+          path: release-assets/${{ inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: create immutable release
+    needs: [validate, native, distro]
+    if: >-
+      always() && needs.native.result == 'success' &&
+      (inputs.include-distros == false || needs.distro.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          pattern: module-*
+          merge-multiple: true
+      - name: Require the complete archive set and create checksum manifest
+        shell: bash
+        env:
+          INCLUDE_DISTROS: ${{ inputs.include-distros }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          archives=(release-assets/*.tar.gz release-assets/*.zip)
+          expected=11
+          if [[ "$INCLUDE_DISTROS" == "true" ]]; then expected=17; fi
+          if [[ "${#archives[@]}" -ne "$expected" ]]; then
+            echo "expected $expected module archives, found ${#archives[@]}" >&2
+            exit 1
+          fi
+          checksum_args=()
+          for archive in "${archives[@]}"; do checksum_args+=(--path "$archive"); done
+          cargo run --locked --manifest-path vendor/tinybus/Cargo.toml --features cli --bin tinybus -- modules checksum "${checksum_args[@]}" --output release-assets/checksum.toml
+      - name: Publish crate to crates.io
+        if: inputs.publish-crates-io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
+        run: cargo publish --locked --package "$CRATES_IO_PACKAGE"
+      - name: Create the immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          MODULE_CRATE: ${{ inputs.module-crate }}
+        run: gh release create "$RELEASE_TAG" release-assets/* --title "$MODULE_CRATE $RELEASE_TAG" --verify-tag
