@@ -153,11 +153,8 @@ jobs:
       - id: msrv
         shell: bash
         run: |
-          version="$(cargo metadata --no-deps --format-version 1 --quiet | jq -er '
-            .workspace_root as $root
-            | [.packages[] | select(.manifest_path == ($root + "/Cargo.toml")) | .rust_version]
-            | first // error("workspace root package must declare rust-version")
-          ')"
+          version="$(awk -F '"' '/^[[:space:]]*rust-version[[:space:]]*=/ { print $2; exit }' Cargo.toml)"
+          test -n "$version" || { echo "Cargo.toml has no rust-version" >&2; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@master
         with:
