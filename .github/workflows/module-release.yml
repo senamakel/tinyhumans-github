@@ -48,6 +48,7 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           MODULE_CRATE: ${{ inputs.module-crate }}
+          EXTRA_PACKAGED_FILES: ${{ inputs.extra-packaged-files }}
           PUBLISH_CRATES_IO: ${{ inputs.publish-crates-io }}
           CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -57,8 +58,12 @@ jobs:
             echo "version must be a semver version without a leading v" >&2
             exit 1
           fi
-          if [[ -z "$MODULE_CRATE" ]]; then
-            echo "module-crate must not be empty" >&2
+          if [[ ! "$MODULE_CRATE" =~ ^[A-Za-z0-9_-]+$ ]]; then
+            echo "module-crate must be a Cargo package name" >&2
+            exit 1
+          fi
+          if ! jq -e 'type == "array" and all(.[]; type == "string")' <<<"$EXTRA_PACKAGED_FILES" >/dev/null; then
+            echo "extra-packaged-files must be a JSON array of strings" >&2
             exit 1
           fi
           if [[ "$PUBLISH_CRATES_IO" == "true" ]]; then
@@ -110,15 +115,15 @@ jobs:
     runs-on: ${{ matrix.runner }}
     needs: validate
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
           submodules: recursive
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
         with:
           targets: ${{ matrix.target }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Build module package
         if: runner.os != 'Windows'
         shell: bash
@@ -143,9 +148,6 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         env:
-          MODULE_HOST: ${{ matrix.host }}
-          MODULE_VERSION: ${{ inputs.version }}
-        env:
           MODULE_CRATE: ${{ inputs.module-crate }}
           MODULE_VERSION: ${{ inputs.version }}
           MODULE_HOST: ${{ matrix.host }}
@@ -158,7 +160,7 @@ jobs:
           MODULE_VERSION: ${{ inputs.version }}
           MODULE_HOST: ${{ matrix.host }}
         run: ./scripts/verify-module.ps1 -Archive "release-assets/$env:MODULE_CRATE-$env:MODULE_VERSION-$env:MODULE_HOST.zip"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: module-${{ matrix.host }}
           path: release-assets/${{ inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.*
@@ -193,7 +195,7 @@ jobs:
             target: aarch64-unknown-linux-gnu
     runs-on: ${{ contains(matrix.host, 'arm64') && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
           submodules: recursive
@@ -208,31 +210,29 @@ jobs:
           DISTRO_IMAGE: ${{ matrix.image }}
           EXTRA_PACKAGED_FILES: ${{ inputs.extra-packaged-files }}
         run: scripts/test-distro.sh "$DISTRO_IMAGE" --crate "$MODULE_CRATE" --version "$MODULE_VERSION" --target "$MODULE_TARGET" --host "$MODULE_HOST" --extra-files-json "$EXTRA_PACKAGED_FILES" --output-dir release-assets
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: module-${{ matrix.host }}
           path: release-assets/${{ inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.tar.gz
           if-no-files-found: error
           retention-days: 1
 
-  release:
-    name: create immutable release
+  assemble:
+    name: assemble release assets
     needs: [validate, native, distro]
     if: >-
       always() && needs.native.result == 'success' &&
       (inputs.include-distros == false || needs.distro.result == 'success')
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ inputs.tag }}
           submodules: recursive
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - uses: actions/download-artifact@v4
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: release-assets
           pattern: module-*
@@ -254,15 +254,71 @@ jobs:
           checksum_args=()
           for archive in "${archives[@]}"; do checksum_args+=(--path "$archive"); done
           cargo run --locked --manifest-path vendor/tinybus/Cargo.toml --features cli --bin tinybus -- modules checksum "${checksum_args[@]}" --output release-assets/checksum.toml
-      - name: Publish crate to crates.io
-        if: inputs.publish-crates-io
-        env:
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
-          CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
-        run: cargo publish --locked --package "$CRATES_IO_PACKAGE"
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: module-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: create immutable release
+    needs: assemble
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: release-assets
+          name: module-release-assets
       - name: Create the immutable GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}
           MODULE_CRATE: ${{ inputs.module-crate }}
-        run: gh release create "$RELEASE_TAG" release-assets/* --title "$MODULE_CRATE $RELEASE_TAG" --verify-tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --json assets >/dev/null 2>&1; then
+            existing=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | sort)
+            expected=$(find release-assets -maxdepth 1 -type f -printf '%f\n' | sort)
+            if [[ "$existing" != "$expected" ]]; then
+              echo "release $RELEASE_TAG already exists with a different asset set" >&2
+              exit 1
+            fi
+            echo "release $RELEASE_TAG already exists with the complete asset set; skipping retry"
+          else
+            gh release create "$RELEASE_TAG" release-assets/* --title "$MODULE_CRATE $RELEASE_TAG" --verify-tag
+          fi
+
+  crates_io:
+    name: publish crate to crates.io
+    if: inputs.publish-crates-io
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - name: Publish crate unless this release retry already published it
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
+          MODULE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            "https://crates.io/api/v1/crates/${CRATES_IO_PACKAGE}/${MODULE_VERSION}")
+          if [[ "$status" == "200" ]]; then
+            echo "$CRATES_IO_PACKAGE $MODULE_VERSION is already published; skipping retry"
+          elif [[ "$status" == "404" ]]; then
+            cargo publish --locked --package "$CRATES_IO_PACKAGE"
+          else
+            echo "crates.io returned HTTP $status while checking the package version" >&2
+            exit 1
+          fi
