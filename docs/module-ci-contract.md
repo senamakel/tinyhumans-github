@@ -54,5 +54,10 @@ their LTS glibc baselines. Alpine/musl is not included because TinyBus currently
 selects no module artifact for musl hosts. FreeBSD is outside the shipped
 Windows/macOS/Linux product set.
 
+When crates.io publishing is enabled, the workflow first dry-runs the package
+from the tag, then publishes it after the GitHub release is created. A failed
+publish can be retried safely: the workflow recognizes an already-published
+crate version and skips it.
+
 Do not rename or remove a required job in the shared workflow without updating
 the organization ruleset and the drift check in OpenHuman in the same change.

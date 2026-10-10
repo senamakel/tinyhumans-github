@@ -24,7 +24,7 @@ on:
         type: boolean
         default: true
       publish-crates-io:
-        description: Publish the configured crate to crates.io before the GitHub release.
+        description: Publish the configured crate to crates.io after the GitHub release.
         type: boolean
         default: false
       crates-io-package:
@@ -43,6 +43,10 @@ jobs:
     name: validate release inputs
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag }}
+          persist-credentials: false
       - name: Validate release metadata
         shell: bash
         env:
@@ -72,6 +76,20 @@ jobs:
               exit 1
             fi
           fi
+      - name: Require packaging scripts at the tagged revision
+        shell: bash
+        env:
+          INCLUDE_DISTROS: ${{ inputs.include-distros }}
+        run: |
+          set -euo pipefail
+          required=(scripts/build-module.sh scripts/build-module.ps1 scripts/verify-module.sh scripts/verify-module.ps1)
+          if [[ "$INCLUDE_DISTROS" == "true" ]]; then required+=(scripts/test-distro.sh); fi
+          for script in "${required[@]}"; do
+            if [[ ! -f "$script" ]]; then
+              echo "release tag does not contain required packaging script: $script" >&2
+              exit 1
+            fi
+          done
 
   native:
     name: verify and package (${{ matrix.host }})
@@ -261,9 +279,29 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  crates_io_check:
+    name: validate crates.io package
+    if: inputs.publish-crates-io
+    needs: assemble
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - name: Verify the crate package before publishing an immutable release
+        env:
+          CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
+        run: cargo publish --dry-run --locked --package "$CRATES_IO_PACKAGE"
+
   release:
     name: create immutable release
-    needs: assemble
+    needs: [assemble, crates_io_check]
+    if: >-
+      always() && needs.assemble.result == 'success' &&
+      (inputs.publish-crates-io == false || needs.crates_io_check.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -275,6 +313,7 @@ jobs:
       - name: Create the immutable GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.tag }}
           MODULE_CRATE: ${{ inputs.module-crate }}
         shell: bash
