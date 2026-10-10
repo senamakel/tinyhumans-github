@@ -150,6 +150,18 @@ jobs:
           persist-credentials: false
           submodules: recursive
       - uses: dtolnay/rust-toolchain@stable
+      - id: msrv
+        shell: bash
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 --quiet | jq -er '
+            .workspace_root as $root
+            | [.packages[] | select(.manifest_path == ($root + "/Cargo.toml")) | .rust_version]
+            | first // error("workspace root package must declare rust-version")
+          ')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ steps.msrv.outputs.version }}
       - uses: Swatinem/rust-cache@v2
       - if: runner.os == 'Linux' && inputs.apt-packages != ''
         run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
