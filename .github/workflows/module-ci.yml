@@ -20,7 +20,7 @@ on:
         type: string
         required: true
       module-e2e-toolchain:
-        description: Compiler for module E2E: declared, stable, or an exact Rust version such as 1.88.0.
+        description: "Compiler for module E2E: declared, stable, or an exact Rust version such as 1.88.0."
         type: string
         default: declared
       feature-test-script:
