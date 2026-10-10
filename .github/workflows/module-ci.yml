@@ -194,7 +194,7 @@ jobs:
           fi
           jq -e '
             type == "array" and length > 0 and all(.[];
-              (.packages | type == "array" and length > 0 and all(.[]; type == "string" and test("^(dep:[A-Za-z0-9_-]+|[A-Za-z0-9_-]+(\\??/[A-Za-z0-9_-]+)?)$"))) and
+              (.packages | type == "array" and length > 0 and all(.[]; type == "string" and test("^[A-Za-z0-9_-]+$"))) and
               ((.features // []) | type == "array" and all(.[]; type == "string" and test("^(dep:[A-Za-z0-9_-]+|[A-Za-z0-9_-]+(\\??/[A-Za-z0-9_-]+)?)$"))) and
               ((.all_targets // false) | type == "boolean") and
               ((.all_features // false) | type == "boolean") and
