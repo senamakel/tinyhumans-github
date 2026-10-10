@@ -30,7 +30,9 @@ provide validated Cargo build groups when a repository deliberately supports
 an older compiler for its public libraries than for optional or unpublished
 workspace crates. Its JSON specifies only package names, feature lists, and
 build flags, not shell commands. The check still installs the root package's
-declared `rust-version`. A caller is ready to become a required-check ruleset
+declared `rust-version`. `module-e2e-toolchain` defaults to `declared`; set it
+to `stable` only when an unpublished module requires a newer compiler than the
+public library MSRV. A caller is ready to become a required-check ruleset
 target only after every supplied command succeeds on its target runners.
 
 ## Release callers

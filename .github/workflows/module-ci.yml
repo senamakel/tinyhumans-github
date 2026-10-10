@@ -19,6 +19,10 @@ on:
         description: Command that runs the module loader end-to-end suite.
         type: string
         required: true
+      module-e2e-toolchain:
+        description: Compiler for module E2E; defaults to the root package's declared MSRV.
+        type: string
+        default: declared
       feature-test-command:
         description: Command that runs the module's feature-level test suite.
         type: string
@@ -198,6 +202,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - if: runner.os == 'Linux' && inputs.apt-packages != ''
         run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+      - name: Select the module E2E toolchain
+        shell: bash
+        env:
+          MODULE_E2E_TOOLCHAIN: ${{ inputs.module-e2e-toolchain }}
+        run: |
+          case "$MODULE_E2E_TOOLCHAIN" in
+            declared) ;;
+            stable) rustup override set stable ;;
+            *) echo "module-e2e-toolchain must be 'declared' or 'stable'" >&2; exit 2 ;;
+          esac
       - shell: bash
         run: ${{ inputs.module-e2e-command }}
 
