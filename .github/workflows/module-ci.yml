@@ -111,6 +111,8 @@ jobs:
         with:
           components: llvm-tools-preview
       - uses: taiki-e/install-action@70b10d055da4af0e46b2f7166e710204993798b3 # immutable revision
+        with:
+          tool: cargo-llvm-cov
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - name: Enforce the per-file coverage threshold
         shell: bash
