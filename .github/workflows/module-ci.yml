@@ -1,0 +1,158 @@
+name: TinyHumans module CI
+
+on:
+  workflow_call:
+    inputs:
+      coverage-command:
+        description: Command that enforces the shared per-file coverage threshold.
+        type: string
+        required: true
+      msrv:
+        description: Minimum supported Rust version declared by the module workspace.
+        type: string
+        required: true
+      module-e2e-command:
+        description: Command that runs the module loader end-to-end suite.
+        type: string
+        required: true
+      feature-test-command:
+        description: Command that runs the module's feature-level test suite.
+        type: string
+        required: true
+      apt-packages:
+        description: Additional Ubuntu packages required by the module.
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --all -- --check
+
+  clippy:
+    name: clippy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - if: inputs.apt-packages != ''
+        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+      - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - if: inputs.apt-packages != ''
+        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+      - run: cargo test --workspace --all-features
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+      - uses: taiki-e/install-action@cargo-llvm-cov
+      - uses: Swatinem/rust-cache@v2
+      - run: ${{ inputs.coverage-command }}
+
+  docs:
+    name: docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - if: inputs.apt-packages != ''
+        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+      - run: cargo doc --workspace --all-features --no-deps
+        env:
+          RUSTDOCFLAGS: -D warnings
+
+  msrv:
+    name: msrv
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ inputs.msrv }}
+      - uses: Swatinem/rust-cache@v2
+      - if: inputs.apt-packages != ''
+        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+      - run: cargo build --workspace --all-targets --all-features
+
+  supply-chain:
+    name: supply-chain
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@v2
+
+  module-e2e:
+    name: module-e2e (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - if: runner.os == 'Linux' && inputs.apt-packages != ''
+        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+      - shell: bash
+        run: ${{ inputs.module-e2e-command }}
+
+  feature-tests:
+    name: feature-tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - if: runner.os == 'Linux' && inputs.apt-packages != ''
+        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+      - shell: bash
+        run: ${{ inputs.feature-test-command }}
