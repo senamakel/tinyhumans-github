@@ -92,6 +92,16 @@ jobs:
               exit 1
             fi
           done
+          for script in scripts/build-module.sh scripts/verify-module.sh; do
+            if [[ ! -x "$script" ]]; then
+              echo "release tag packaging script is not executable: $script" >&2
+              exit 1
+            fi
+          done
+          if [[ "$INCLUDE_DISTROS" == "true" && ! -x scripts/test-distro.sh ]]; then
+            echo "release tag packaging script is not executable: scripts/test-distro.sh" >&2
+            exit 1
+          fi
       - name: Match requested version to Cargo packages at the tag
         shell: bash
         env:
@@ -344,19 +354,48 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.tag }}
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           set -euo pipefail
+          release_type=()
+          if [[ "$MODULE_VERSION" == *-* ]]; then release_type+=(--prerelease); fi
           if gh release view "$RELEASE_TAG" --json assets >/dev/null 2>&1; then
-            existing=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' | sort)
+            release=$(gh release view "$RELEASE_TAG" --json assets,isDraft,isPrerelease)
+            is_draft=$(jq -r '.isDraft' <<<"$release")
+            is_prerelease=$(jq -r '.isPrerelease' <<<"$release")
+            existing=$(jq -r '.assets[].name' <<<"$release" | sort)
             expected=$(find release-assets -maxdepth 1 -type f -printf '%f\n' | sort)
             if [[ "$existing" != "$expected" ]]; then
               echo "release $RELEASE_TAG already exists with a different asset set" >&2
               exit 1
             fi
-            echo "release $RELEASE_TAG already exists with the complete asset set; skipping retry"
+            existing_assets=$(mktemp -d "${RUNNER_TEMP:-/tmp}/module-release-assets.XXXXXX")
+            gh release download "$RELEASE_TAG" --dir "$existing_assets" --clobber
+            while IFS= read -r expected_file; do
+              name=$(basename "$expected_file")
+              expected_digest=$(sha256sum "$expected_file" | awk '{print $1}')
+              actual_digest=$(sha256sum "$existing_assets/$name" | awk '{print $1}')
+              if [[ "$expected_digest" != "$actual_digest" ]]; then
+                echo "release $RELEASE_TAG asset $name does not match the assembled artifact" >&2
+                exit 1
+              fi
+            done < <(find release-assets -maxdepth 1 -type f -print | sort)
+            rm -rf "$existing_assets"
+            expected_prerelease=false
+            if [[ ${#release_type[@]} -gt 0 ]]; then expected_prerelease=true; fi
+            if [[ "$is_prerelease" != "$expected_prerelease" ]]; then
+              echo "release $RELEASE_TAG has the wrong prerelease state" >&2
+              exit 1
+            fi
+            if [[ "$is_draft" == "true" ]]; then
+              gh release edit "$RELEASE_TAG" --draft=false "${release_type[@]}"
+              echo "published verified draft release $RELEASE_TAG"
+            else
+              echo "release $RELEASE_TAG already exists with verified asset contents; skipping retry"
+            fi
           else
-            gh release create "$RELEASE_TAG" release-assets/* --title "$MODULE_CRATE $RELEASE_TAG" --verify-tag
+            gh release create "$RELEASE_TAG" release-assets/* --title "$MODULE_CRATE $RELEASE_TAG" --verify-tag "${release_type[@]}"
           fi
 
   crates_io:
