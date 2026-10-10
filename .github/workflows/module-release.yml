@@ -1,0 +1,430 @@
+name: TinyHumans module release
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Existing annotated or lightweight tag for the release.
+        type: string
+        required: true
+      version:
+        description: Module version without the leading v.
+        type: string
+        required: true
+      module-crate:
+        description: Dynamic library Cargo package name.
+        type: string
+        required: true
+      extra-packaged-files:
+        description: JSON array of additional files the module package script includes.
+        type: string
+        default: '[]'
+      include-distros:
+        description: Build the Fedora 43/44 and Arch x86_64/arm64 artifacts.
+        type: boolean
+        default: true
+      publish-crates-io:
+        description: Publish the configured crate to crates.io after the GitHub release.
+        type: boolean
+        default: false
+      crates-io-package:
+        description: Cargo package to publish when publish-crates-io is true.
+        type: string
+        default: ''
+    secrets:
+      CARGO_REGISTRY_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: validate release inputs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - name: Validate release metadata
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          EXTRA_PACKAGED_FILES: ${{ inputs.extra-packaged-files }}
+          PUBLISH_CRATES_IO: ${{ inputs.publish-crates-io }}
+          CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]; then
+            echo "version must be a semver version without a leading v" >&2
+            exit 1
+          fi
+          if [[ ! "$MODULE_CRATE" =~ ^[A-Za-z0-9_-]+$ ]]; then
+            echo "module-crate must be a Cargo package name" >&2
+            exit 1
+          fi
+          if ! jq -e 'type == "array" and all(.[]; type == "string")' <<<"$EXTRA_PACKAGED_FILES" >/dev/null; then
+            echo "extra-packaged-files must be a JSON array of strings" >&2
+            exit 1
+          fi
+          if [[ "$PUBLISH_CRATES_IO" == "true" ]]; then
+            if [[ -z "$CRATES_IO_PACKAGE" || -z "$CARGO_REGISTRY_TOKEN" ]]; then
+              echo "crates-io-package and CARGO_REGISTRY_TOKEN are required when publishing to crates.io" >&2
+              exit 1
+            fi
+          fi
+      - name: Require packaging scripts at the tagged revision
+        shell: bash
+        env:
+          INCLUDE_DISTROS: ${{ inputs.include-distros }}
+        run: |
+          set -euo pipefail
+          required=(scripts/build-module.sh scripts/build-module.ps1 scripts/verify-module.sh scripts/verify-module.ps1)
+          if [[ "$INCLUDE_DISTROS" == "true" ]]; then required+=(scripts/test-distro.sh); fi
+          for script in "${required[@]}"; do
+            if [[ ! -f "$script" ]]; then
+              echo "release tag does not contain required packaging script: $script" >&2
+              exit 1
+            fi
+          done
+          for script in scripts/build-module.sh scripts/verify-module.sh; do
+            if [[ ! -x "$script" ]]; then
+              echo "release tag packaging script is not executable: $script" >&2
+              exit 1
+            fi
+          done
+          if [[ "$INCLUDE_DISTROS" == "true" && ! -x scripts/test-distro.sh ]]; then
+            echo "release tag packaging script is not executable: scripts/test-distro.sh" >&2
+            exit 1
+          fi
+      - name: Match requested version to Cargo packages at the tag
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          PUBLISH_CRATES_IO: ${{ inputs.publish-crates-io }}
+          CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
+        run: |
+          set -euo pipefail
+          metadata=$(cargo metadata --format-version 1 --no-deps)
+          module_version=$(jq -r --arg name "$MODULE_CRATE" \
+            '[.packages[] | select(.name == $name) | .version] | if length == 1 then .[0] else "" end' \
+            <<<"$metadata")
+          if [[ "$module_version" != "$VERSION" ]]; then
+            echo "module crate $MODULE_CRATE is version ${module_version:-missing}, expected $VERSION" >&2
+            exit 1
+          fi
+          if [[ "$PUBLISH_CRATES_IO" == "true" ]]; then
+            registry_version=$(jq -r --arg name "$CRATES_IO_PACKAGE" \
+              '[.packages[] | select(.name == $name) | .version] | if length == 1 then .[0] else "" end' \
+              <<<"$metadata")
+            if [[ "$registry_version" != "$VERSION" ]]; then
+              echo "crates.io package $CRATES_IO_PACKAGE is version ${registry_version:-missing}, expected $VERSION" >&2
+              exit 1
+            fi
+          fi
+
+  native:
+    name: verify and package (${{ matrix.host }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: ubuntu-22.04-x86_64
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - host: ubuntu-22.04-arm64
+            runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+          - host: ubuntu-24.04-x86_64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - host: ubuntu-24.04-arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - host: macos-15-x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - host: macos-15-arm64
+            runner: macos-15
+            target: aarch64-apple-darwin
+          - host: macos-26-x86_64
+            runner: macos-26-intel
+            target: x86_64-apple-darwin
+          - host: macos-26-arm64
+            runner: macos-26
+            target: aarch64-apple-darwin
+          - host: windows-2022-x86_64
+            runner: windows-2022
+            target: x86_64-pc-windows-msvc
+          - host: windows-2025-x86_64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - host: windows-11-arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    needs: validate
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Build module package
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_TARGET: ${{ matrix.target }}
+          MODULE_HOST: ${{ matrix.host }}
+          EXTRA_PACKAGED_FILES: ${{ inputs.extra-packaged-files }}
+        run: scripts/build-module.sh --crate "$MODULE_CRATE" --version "$MODULE_VERSION" --target "$MODULE_TARGET" --host "$MODULE_HOST" --extra-files-json "$EXTRA_PACKAGED_FILES" --output-dir release-assets
+      - name: Build module package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_TARGET: ${{ matrix.target }}
+          MODULE_HOST: ${{ matrix.host }}
+          EXTRA_PACKAGED_FILES: ${{ inputs.extra-packaged-files }}
+        run: ./scripts/build-module.ps1 -Crate $env:MODULE_CRATE -Version $env:MODULE_VERSION -Target $env:MODULE_TARGET -HostKey $env:MODULE_HOST -ExtraFilesJson $env:EXTRA_PACKAGED_FILES -OutputDir release-assets
+      - name: Verify built module
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_HOST: ${{ matrix.host }}
+        run: scripts/verify-module.sh --archive "release-assets/${MODULE_CRATE}-${MODULE_VERSION}-${MODULE_HOST}.tar.gz"
+      - name: Verify built module
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_HOST: ${{ matrix.host }}
+        run: ./scripts/verify-module.ps1 -Archive "release-assets/$env:MODULE_CRATE-$env:MODULE_VERSION-$env:MODULE_HOST.zip"
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: module-${{ matrix.host }}
+          path: release-assets/${{ inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.*
+          if-no-files-found: error
+          retention-days: 1
+
+  distro:
+    name: verify and package (${{ matrix.host }})
+    if: inputs.include-distros
+    needs: validate
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: fedora-43-x86_64
+            image: fedora:43
+            target: x86_64-unknown-linux-gnu
+          - host: fedora-43-arm64
+            image: fedora:43
+            target: aarch64-unknown-linux-gnu
+          - host: fedora-44-x86_64
+            image: fedora:44
+            target: x86_64-unknown-linux-gnu
+          - host: fedora-44-arm64
+            image: fedora:44
+            target: aarch64-unknown-linux-gnu
+          - host: archlinux-x86_64
+            image: archlinux:base-devel
+            target: x86_64-unknown-linux-gnu
+          - host: archlinux-arm64
+            image: menci/archlinuxarm:base-devel
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ contains(matrix.host, 'arm64') && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: recursive
+          persist-credentials: false
+      - name: Build and verify distro module package
+        shell: bash
+        env:
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_TARGET: ${{ matrix.target }}
+          MODULE_HOST: ${{ matrix.host }}
+          DISTRO_IMAGE: ${{ matrix.image }}
+          EXTRA_PACKAGED_FILES: ${{ inputs.extra-packaged-files }}
+        run: scripts/test-distro.sh "$DISTRO_IMAGE" --crate "$MODULE_CRATE" --version "$MODULE_VERSION" --target "$MODULE_TARGET" --host "$MODULE_HOST" --extra-files-json "$EXTRA_PACKAGED_FILES" --output-dir release-assets
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: module-${{ matrix.host }}
+          path: release-assets/${{ inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  assemble:
+    name: assemble release assets
+    needs: [validate, native, distro]
+    if: >-
+      always() && needs.native.result == 'success' &&
+      (inputs.include-distros == false || needs.distro.result == 'success')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: release-assets
+          pattern: module-*
+          merge-multiple: true
+      - name: Require the complete archive set and create checksum manifest
+        shell: bash
+        env:
+          INCLUDE_DISTROS: ${{ inputs.include-distros }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          archives=(release-assets/*.tar.gz release-assets/*.zip)
+          expected=11
+          if [[ "$INCLUDE_DISTROS" == "true" ]]; then expected=17; fi
+          if [[ "${#archives[@]}" -ne "$expected" ]]; then
+            echo "expected $expected module archives, found ${#archives[@]}" >&2
+            exit 1
+          fi
+          checksum_args=()
+          for archive in "${archives[@]}"; do checksum_args+=(--path "$archive"); done
+          cargo run --locked --manifest-path vendor/tinybus/Cargo.toml --features cli --bin tinybus -- modules checksum "${checksum_args[@]}" --output release-assets/checksum.toml
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: module-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 1
+
+  crates_io_check:
+    name: validate crates.io package
+    if: inputs.publish-crates-io
+    needs: assemble
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - name: Verify the crate package before publishing an immutable release
+        env:
+          CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
+        run: cargo publish --dry-run --locked --package "$CRATES_IO_PACKAGE"
+
+  release:
+    name: create immutable release
+    needs: [assemble, crates_io_check]
+    if: >-
+      always() && needs.assemble.result == 'success' &&
+      (inputs.publish-crates-io == false || needs.crates_io_check.result == 'success')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: release-assets
+          name: module-release-assets
+      - name: Create the immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_type=()
+          if [[ "$MODULE_VERSION" == *-* ]]; then release_type+=(--prerelease); fi
+          if gh release view "$RELEASE_TAG" --json assets >/dev/null 2>&1; then
+            release=$(gh release view "$RELEASE_TAG" --json assets,isDraft,isPrerelease)
+            is_draft=$(jq -r '.isDraft' <<<"$release")
+            is_prerelease=$(jq -r '.isPrerelease' <<<"$release")
+            existing=$(jq -r '.assets[].name' <<<"$release" | sort)
+            expected=$(find release-assets -maxdepth 1 -type f -printf '%f\n' | sort)
+            if [[ "$existing" != "$expected" ]]; then
+              echo "release $RELEASE_TAG already exists with a different asset set" >&2
+              exit 1
+            fi
+            existing_assets=$(mktemp -d "${RUNNER_TEMP:-/tmp}/module-release-assets.XXXXXX")
+            gh release download "$RELEASE_TAG" --dir "$existing_assets" --clobber
+            while IFS= read -r expected_file; do
+              name=$(basename "$expected_file")
+              expected_digest=$(sha256sum "$expected_file" | awk '{print $1}')
+              actual_digest=$(sha256sum "$existing_assets/$name" | awk '{print $1}')
+              if [[ "$expected_digest" != "$actual_digest" ]]; then
+                echo "release $RELEASE_TAG asset $name does not match the assembled artifact" >&2
+                exit 1
+              fi
+            done < <(find release-assets -maxdepth 1 -type f -print | sort)
+            rm -rf "$existing_assets"
+            expected_prerelease=false
+            if [[ ${#release_type[@]} -gt 0 ]]; then expected_prerelease=true; fi
+            if [[ "$is_prerelease" != "$expected_prerelease" ]]; then
+              echo "release $RELEASE_TAG has the wrong prerelease state" >&2
+              exit 1
+            fi
+            if [[ "$is_draft" == "true" ]]; then
+              gh release edit "$RELEASE_TAG" --draft=false "${release_type[@]}"
+              echo "published verified draft release $RELEASE_TAG"
+            else
+              echo "release $RELEASE_TAG already exists with verified asset contents; skipping retry"
+            fi
+          else
+            gh release create "$RELEASE_TAG" release-assets/* --title "$MODULE_CRATE $RELEASE_TAG" --verify-tag "${release_type[@]}"
+          fi
+
+  crates_io:
+    name: publish crate to crates.io
+    if: inputs.publish-crates-io
+    needs: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ inputs.tag }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - name: Publish crate unless this release retry already published it
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
+          MODULE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+            "https://crates.io/api/v1/crates/${CRATES_IO_PACKAGE}/${MODULE_VERSION}")
+          if [[ "$status" == "200" ]]; then
+            echo "$CRATES_IO_PACKAGE $MODULE_VERSION is already published; skipping retry"
+          elif [[ "$status" == "404" ]]; then
+            cargo publish --locked --package "$CRATES_IO_PACKAGE"
+          else
+            echo "crates.io returned HTTP $status while checking the package version" >&2
+            exit 1
+          fi
