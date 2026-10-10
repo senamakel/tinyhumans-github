@@ -7,10 +7,6 @@ on:
         description: Command that enforces the shared per-file coverage threshold.
         type: string
         required: true
-      msrv:
-        description: Minimum supported Rust version declared by the module workspace.
-        type: string
-        required: true
       module-e2e-command:
         description: Command that runs the module loader end-to-end suite.
         type: string
@@ -69,7 +65,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - if: inputs.apt-packages != ''
         run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
-      - run: cargo test --workspace --all-features
+      - run: cargo test --workspace
 
   coverage:
     name: coverage
@@ -110,9 +106,18 @@ jobs:
         with:
           persist-credentials: false
           submodules: recursive
+      - id: msrv
+        shell: bash
+        run: |
+          version="$(cargo metadata --no-deps --format-version 1 --quiet | jq -er '
+            .workspace_root as $root
+            | [.packages[] | select(.manifest_path == ($root + "/Cargo.toml")) | .rust_version]
+            | first // error("workspace root package must declare rust-version")
+          ')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@master
         with:
-          toolchain: ${{ inputs.msrv }}
+          toolchain: ${{ steps.msrv.outputs.version }}
       - uses: Swatinem/rust-cache@v2
       - if: inputs.apt-packages != ''
         run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}

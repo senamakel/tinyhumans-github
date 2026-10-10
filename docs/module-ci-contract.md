@@ -17,10 +17,13 @@ publishes the same required check names in every caller:
   `feature-tests (windows-latest)`
 
 Each module owns its test commands and platform dependencies. The workflow
-caller supplies the module's coverage command, declared MSRV, module loader
-suite, feature suite, and any Ubuntu packages needed to build or test it. A
-caller is ready to become a required-check ruleset target only after every
-supplied command succeeds on its target runners.
+caller supplies the module's coverage command, module loader suite, feature
+suite, and any Ubuntu packages needed to build or test it. The `test` job runs
+the default feature set; the feature-test command runs on all three operating
+systems. The MSRV job reads `rust-version` from the root package's `Cargo.toml`
+so the compiler version cannot drift from the crate declaration. A caller is
+ready to become a required-check ruleset target only after every supplied
+command succeeds on its target runners.
 
 ## Release callers
 
