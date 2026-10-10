@@ -11,6 +11,10 @@ on:
         description: Deprecated compatibility input; MSRV is read from Cargo.toml.
         type: string
         default: ''
+      msrv-build-command:
+        description: Optional workspace-specific build command for the declared MSRV.
+        type: string
+        default: ''
       module-e2e-command:
         description: Command that runs the module loader end-to-end suite.
         type: string
@@ -125,7 +129,16 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - if: inputs.apt-packages != ''
         run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
-      - run: cargo build --workspace --all-targets --all-features
+      - name: Build with the declared MSRV
+        shell: bash
+        env:
+          MSRV_BUILD_COMMAND: ${{ inputs.msrv-build-command }}
+        run: |
+          if [[ -n "$MSRV_BUILD_COMMAND" ]]; then
+            eval "$MSRV_BUILD_COMMAND"
+          else
+            cargo build --workspace --all-targets --all-features
+          fi
 
   supply-chain:
     name: supply-chain
