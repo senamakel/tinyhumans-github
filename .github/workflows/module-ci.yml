@@ -222,21 +222,20 @@ jobs:
             )
           ' <<< "$MSRV_BUILD_TARGETS" >/dev/null
           while IFS= read -r target; do
-            args=()
-            while IFS= read -r package; do args+=(--package "$package"); done \
-              < <(jq -r '.packages[]' <<< "$target")
-            while IFS= read -r feature; do args+=(--features "$feature"); done \
-              < <(jq -r '.features[]?' <<< "$target")
-            [[ "$(jq -r '.all_targets // false' <<< "$target")" == true ]] && args+=(--all-targets)
-            [[ "$(jq -r '.all_features // false' <<< "$target")" == true ]] && args+=(--all-features)
-            [[ "$(jq -r '.no_default_features // false' <<< "$target")" == true ]] && args+=(--no-default-features)
             metadata="$(cargo +stable metadata --format-version 1 --no-deps)"
             while IFS= read -r package; do
               version="$(jq -er --arg name "$package" '.packages[] | select(.name == $name) | .rust_version // error("package must declare rust-version")' <<< "$metadata")"
               rustup toolchain install "$version" --profile minimal
               # Replace the group's package list with the package being checked.
               package_args=(--package "$package")
-              while IFS= read -r feature; do package_args+=(--features "$feature"); done < <(jq -r '.features[]?' <<< "$target")
+              while IFS= read -r feature; do
+                prefix="${feature%%/*}"
+                if [[ "$feature" == */* && "$prefix" != "$package" ]] &&
+                  jq -e --arg prefix "$prefix" '.packages | index($prefix) != null' <<< "$target" >/dev/null; then
+                  continue
+                fi
+                package_args+=(--features "$feature")
+              done < <(jq -r '.features[]?' <<< "$target")
               [[ "$(jq -r '.all_targets // false' <<< "$target")" == true ]] && package_args+=(--all-targets)
               [[ "$(jq -r '.all_features // false' <<< "$target")" == true ]] && package_args+=(--all-features)
               [[ "$(jq -r '.no_default_features // false' <<< "$target")" == true ]] && package_args+=(--no-default-features)
