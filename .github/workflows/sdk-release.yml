@@ -1,0 +1,54 @@
+name: TinyHumans SDK source release
+# TinyBus is the loader/runtime SDK, not a loadable module: it has no cdylib.
+# Its source archive is intentional; 17 native module archives do not apply.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      package:
+        type: string
+        required: true
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ inputs.tag }}
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249
+      - name: Validate and package reviewed SDK source
+        env:
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          [[ "$PACKAGE" =~ ^[A-Za-z0-9_-]+$ ]]
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
+          actual="$(cargo metadata --no-deps --format-version 1 | jq -er --arg name "$PACKAGE" '.packages[] | select(.name == $name) | .version')"
+          [[ "$actual" == "$VERSION" ]]
+          cargo test --locked --workspace --all-features
+          mkdir -p release-assets
+          archive="$PACKAGE-$VERSION-source.tar.gz"
+          git archive --format=tar.gz --prefix="$PACKAGE-$VERSION/" HEAD > "release-assets/$archive"
+          hash="$(sha256sum "release-assets/$archive" | cut -d ' ' -f 1)"
+          printf '"%s" = "%s"\n' "$archive" "$hash" > release-assets/checksum.toml
+      - name: Publish immutable SDK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: gh release create "$TAG" release-assets/* --verify-tag --title "$TAG"

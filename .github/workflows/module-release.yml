@@ -59,8 +59,13 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
           submodules: recursive
+          fetch-depth: 0
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - name: Require a reviewed source commit
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
       - name: Validate release metadata
         shell: bash
         env:

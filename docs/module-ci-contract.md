@@ -76,3 +76,15 @@ crate version and skips it.
 
 Do not rename or remove a required job in the shared workflow without updating
 the organization ruleset and the drift check in OpenHuman in the same change.
+
+## Version changes and SDK releases
+
+Version changes land through a PR before a vX.Y.Z tag is created at the merged
+commit. Module release callers accept an existing tag; they never push a bump
+commit to main. The shared pipeline verifies that the tagged commit is an
+ancestor of main before building.
+
+TinyBus owns the loader/runtime SDK and has no loadable cdylib. It calls the
+shared sdk-release.yml to publish a source archive and checksum.toml. Native
+module archives and module-load verification are not applicable to that SDK;
+its three-platform loader fixture tests remain required CI checks.
