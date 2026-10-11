@@ -114,6 +114,18 @@ jobs:
         with:
           tool: cargo-llvm-cov
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - if: inputs.apt-packages != ''
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?([ ][a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - name: Enforce the per-file coverage threshold
         shell: bash
         env:
@@ -164,9 +176,11 @@ jobs:
         shell: bash
         run: |
           version="$(cargo metadata --format-version 1 --quiet | jq -er '
-            .resolve.root as $root
-            | [.packages[] | select(.id == $root) | .rust_version]
-            | first // error("workspace root package must declare rust-version")
+            .workspace_members as $members
+            | [.packages[] | select(.id as $id | $members | index($id)) | .rust_version
+                | select(. != null) | split(".") | map(tonumber)]
+            | max // error("workspace packages must declare rust-version")
+            | map(tostring) | join(".")
           ')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master as of 2026-10-10
@@ -242,9 +256,11 @@ jobs:
         shell: bash
         run: |
           version="$(cargo metadata --format-version 1 --quiet | jq -er '
-            .resolve.root as $root
-            | [.packages[] | select(.id == $root) | .rust_version]
-            | first // error("workspace root package must declare rust-version")
+            .workspace_members as $members
+            | [.packages[] | select(.id as $id | $members | index($id)) | .rust_version
+                | select(. != null) | split(".") | map(tonumber)]
+            | max // error("workspace packages must declare rust-version")
+            | map(tostring) | join(".")
           ')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master as of 2026-10-10

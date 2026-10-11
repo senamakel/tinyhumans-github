@@ -15,6 +15,18 @@ on:
         description: Dynamic library Cargo package name.
         type: string
         required: true
+      source-artifact:
+        description: Optional Actions artifact containing additional source packages for the immutable release.
+        type: string
+        default: ''
+      apt-packages:
+        description: Additional Ubuntu build dependencies.
+        type: string
+        default: ''
+      module-manifest:
+        description: Manifest containing the dynamic library package (including nested workspaces).
+        type: string
+        default: Cargo.toml
       extra-packaged-files:
         description: JSON array of additional files the module package script includes.
         type: string
@@ -107,11 +119,17 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_MANIFEST: ${{ inputs.module-manifest }}
           PUBLISH_CRATES_IO: ${{ inputs.publish-crates-io }}
           CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
         run: |
           set -euo pipefail
-          metadata=$(cargo metadata --format-version 1 --no-deps)
+          [[ "$MODULE_MANIFEST" =~ ^[A-Za-z0-9._/-]+Cargo.toml$ || "$MODULE_MANIFEST" == Cargo.toml ]] &&
+            [[ "$MODULE_MANIFEST" != /* && "$MODULE_MANIFEST" != ../* && "$MODULE_MANIFEST" != */../* ]] || {
+            echo "module-manifest must be a repository-relative Cargo.toml path" >&2
+            exit 2
+          }
+          metadata=$(cargo metadata --manifest-path "$MODULE_MANIFEST" --format-version 1 --no-deps)
           module_version=$(jq -r --arg name "$MODULE_CRATE" \
             '[.packages[] | select(.name == $name) | .version] | if length == 1 then .[0] else "" end' \
             <<<"$metadata")
@@ -180,6 +198,18 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - if: runner.os == 'Linux' && inputs.apt-packages != ''
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?([ ][a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - name: Build module package
         if: runner.os != 'Windows'
         shell: bash
@@ -310,6 +340,11 @@ jobs:
           checksum_args=()
           for archive in "${archives[@]}"; do checksum_args+=(--path "$archive"); done
           cargo run --locked --manifest-path vendor/tinybus/Cargo.toml --features cli --bin tinybus -- modules checksum "${checksum_args[@]}" --output release-assets/checksum.toml
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: inputs.source-artifact != ''
+        with:
+          name: ${{ inputs.source-artifact }}
+          path: release-assets
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: module-release-assets
