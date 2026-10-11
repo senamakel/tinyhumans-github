@@ -204,6 +204,8 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ${{ matrix.host }}
       - if: runner.os == 'Linux' && inputs.apt-packages != ''
         shell: bash
         env:
