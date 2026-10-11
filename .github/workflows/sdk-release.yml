@@ -18,8 +18,6 @@ permissions:
 jobs:
   source:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -46,15 +44,68 @@ jobs:
           git archive --format=tar.gz --prefix="$PACKAGE-$VERSION/" HEAD > "release-assets/$archive"
           hash="$(sha256sum "release-assets/$archive" | cut -d ' ' -f 1)"
           printf '"%s" = "%s"\n' "$archive" "$hash" > release-assets/checksum.toml
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: sdk-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+
+  release:
+    needs: source
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: sdk-release-assets
+          path: release-assets
       - name: Publish immutable SDK release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          TAG: ${{ inputs.tag }}
-          VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          MODULE_CRATE: ${{ inputs.package }}
+          MODULE_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           set -euo pipefail
           flags=()
-          if [[ "$VERSION" == *-* ]]; then flags+=(--prerelease); fi
-          gh release create "$TAG" release-assets/* --verify-tag --title "$TAG" "${flags[@]}"
+          if [[ "$MODULE_VERSION" == *-* ]]; then flags+=(--prerelease); fi
+          if gh release view "$RELEASE_TAG" --json assets >/dev/null 2>&1; then
+            release=$(gh release view "$RELEASE_TAG" --json assets,isDraft,isPrerelease)
+            is_draft=$(jq -r '.isDraft' <<<"$release")
+            is_prerelease=$(jq -r '.isPrerelease' <<<"$release")
+            existing=$(jq -r '.assets[].name' <<<"$release" | sort)
+            expected=$(find release-assets -maxdepth 1 -type f -printf '%f\n' | sort)
+            if [[ "$existing" != "$expected" ]]; then
+              echo "release $RELEASE_TAG already exists with a different asset set" >&2
+              exit 1
+            fi
+            existing_assets=$(mktemp -d "${RUNNER_TEMP:-/tmp}/module-release-assets.XXXXXX")
+            gh release download "$RELEASE_TAG" --dir "$existing_assets" --clobber
+            while IFS= read -r expected_file; do
+              name=$(basename "$expected_file")
+              expected_digest=$(sha256sum "$expected_file" | awk '{print $1}')
+              actual_digest=$(sha256sum "$existing_assets/$name" | awk '{print $1}')
+              if [[ "$expected_digest" != "$actual_digest" ]]; then
+                echo "release $RELEASE_TAG asset $name does not match the assembled artifact" >&2
+                exit 1
+              fi
+            done < <(find release-assets -maxdepth 1 -type f -print | sort)
+            rm -rf "$existing_assets"
+            expected_prerelease=false
+            if [[ ${#flags[@]} -gt 0 ]]; then expected_prerelease=true; fi
+            if [[ "$is_prerelease" != "$expected_prerelease" ]]; then
+              echo "release $RELEASE_TAG has the wrong prerelease state" >&2
+              exit 1
+            fi
+            if [[ "$is_draft" == "true" ]]; then
+              gh release edit "$RELEASE_TAG" --draft=false "${flags[@]}"
+              echo "published verified draft release $RELEASE_TAG"
+            else
+              echo "release $RELEASE_TAG already exists with verified asset contents; skipping retry"
+            fi
+          else
+            gh release create "$RELEASE_TAG" release-assets/* --title "$MODULE_CRATE $RELEASE_TAG" --verify-tag "${flags[@]}"
+          fi
