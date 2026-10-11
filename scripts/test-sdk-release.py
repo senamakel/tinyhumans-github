@@ -12,7 +12,8 @@ class SdkReleaseWorkflowTests(unittest.TestCase):
 
     def test_cargo_runs_without_release_write_permission(self):
         jobs = self.workflow["jobs"]
-        self.assertEqual(jobs["package"]["permissions"], None)
+        self.assertEqual(self.workflow["permissions"], {"contents": "read"})
+        self.assertNotIn("permissions", jobs["package"])
         self.assertEqual(jobs["publish"]["permissions"], {"contents": "write"})
         package_steps = "\n".join(str(step) for step in jobs["package"]["steps"])
         publish_steps = "\n".join(str(step) for step in jobs["publish"]["steps"])
