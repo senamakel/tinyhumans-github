@@ -176,11 +176,15 @@ jobs:
         shell: bash
         run: |
           version="$(cargo metadata --format-version 1 --quiet | jq -er '
-            .workspace_members as $members
-            | [.packages[] | select(.id as $id | $members | index($id)) | .rust_version
+            . as $metadata
+            | .workspace_members as $members
+            | ([.packages[] | select(.id == $metadata.resolve.root) | .rust_version] | first) as $root_msrv
+            | if $root_msrv != null then $root_msrv else
+              [.packages[] | select(.id as $id | $members | index($id)) | .rust_version
                 | select(. != null) | split(".") | map(tonumber)]
             | max // error("workspace packages must declare rust-version")
             | map(tostring) | join(".")
+            end
           ')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master as of 2026-10-10
@@ -226,7 +230,18 @@ jobs:
             [[ "$(jq -r '.all_targets // false' <<< "$target")" == true ]] && args+=(--all-targets)
             [[ "$(jq -r '.all_features // false' <<< "$target")" == true ]] && args+=(--all-features)
             [[ "$(jq -r '.no_default_features // false' <<< "$target")" == true ]] && args+=(--no-default-features)
-            cargo build "${args[@]}"
+            metadata="$(cargo +stable metadata --format-version 1 --no-deps)"
+            while IFS= read -r package; do
+              version="$(jq -er --arg name "$package" '.packages[] | select(.name == $name) | .rust_version // error("package must declare rust-version")' <<< "$metadata")"
+              rustup toolchain install "$version" --profile minimal
+              # Replace the group's package list with the package being checked.
+              package_args=(--package "$package")
+              while IFS= read -r feature; do package_args+=(--features "$feature"); done < <(jq -r '.features[]?' <<< "$target")
+              [[ "$(jq -r '.all_targets // false' <<< "$target")" == true ]] && package_args+=(--all-targets)
+              [[ "$(jq -r '.all_features // false' <<< "$target")" == true ]] && package_args+=(--all-features)
+              [[ "$(jq -r '.no_default_features // false' <<< "$target")" == true ]] && package_args+=(--no-default-features)
+              cargo "+$version" build "${package_args[@]}"
+            done < <(jq -r '.packages[]' <<< "$target")
           done < <(jq -c '.[]' <<< "$MSRV_BUILD_TARGETS")
 
   supply-chain:
@@ -256,11 +271,15 @@ jobs:
         shell: bash
         run: |
           version="$(cargo metadata --format-version 1 --quiet | jq -er '
-            .workspace_members as $members
-            | [.packages[] | select(.id as $id | $members | index($id)) | .rust_version
+            . as $metadata
+            | .workspace_members as $members
+            | ([.packages[] | select(.id == $metadata.resolve.root) | .rust_version] | first) as $root_msrv
+            | if $root_msrv != null then $root_msrv else
+              [.packages[] | select(.id as $id | $members | index($id)) | .rust_version
                 | select(. != null) | split(".") | map(tonumber)]
             | max // error("workspace packages must declare rust-version")
             | map(tostring) | join(".")
+            end
           ')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master as of 2026-10-10

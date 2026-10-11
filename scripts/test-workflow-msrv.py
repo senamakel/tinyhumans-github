@@ -23,11 +23,11 @@ class MsrvTests(unittest.TestCase):
                          {"id": "external", "rust_version": "1.99"}],
             "resolve": {"root": None}}), ["1.88", "1.88"])
 
-    def test_root_package_and_members_share_the_highest_msrv(self):
+    def test_root_package_keeps_its_own_msrv(self):
         self.assertEqual(self.query({"workspace_members": ["a", "b"],
             "packages": [{"id": "a", "rust_version": "1.85"},
                          {"id": "b", "rust_version": "1.88"}],
-            "resolve": {"root": "a"}}), ["1.88", "1.88"])
+            "resolve": {"root": "a"}}), ["1.85", "1.85"])
 
 if __name__ == "__main__":
     unittest.main()
