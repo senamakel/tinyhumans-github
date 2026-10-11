@@ -3,20 +3,28 @@ name: TinyHumans module CI
 on:
   workflow_call:
     inputs:
-      coverage-command:
-        description: Command that enforces the shared per-file coverage threshold.
+      coverage-script:
+        description: Repository-relative Bash script that enforces the shared per-file coverage threshold.
         type: string
         required: true
       msrv:
         description: Deprecated compatibility input; MSRV is read from Cargo.toml.
         type: string
         default: ''
-      module-e2e-command:
-        description: Command that runs the module loader end-to-end suite.
+      msrv-build-targets:
+        description: Optional validated Cargo build groups for the declared MSRV.
+        type: string
+        default: ''
+      module-e2e-script:
+        description: Repository-relative Bash script that runs the module loader end-to-end suite.
         type: string
         required: true
-      feature-test-command:
-        description: Command that runs the module's feature-level test suite.
+      module-e2e-toolchain:
+        description: "Compiler for module E2E: declared, stable, or an exact Rust version such as 1.88.0."
+        type: string
+        default: declared
+      feature-test-script:
+        description: Repository-relative Bash script that runs the module's feature-level test suite.
         type: string
         required: true
       apt-packages:
@@ -32,11 +40,11 @@ jobs:
     name: fmt
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
         with:
           components: rustfmt
       - run: cargo fmt --all -- --check
@@ -45,59 +53,101 @@ jobs:
     name: clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - if: inputs.apt-packages != ''
-        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?([ ][a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
   test:
     name: test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - if: inputs.apt-packages != ''
-        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?([ ][a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - run: cargo test --workspace
 
   coverage:
     name: coverage
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
         with:
           components: llvm-tools-preview
-      - uses: taiki-e/install-action@cargo-llvm-cov
-      - uses: Swatinem/rust-cache@v2
-      - run: ${{ inputs.coverage-command }}
+      - uses: taiki-e/install-action@70b10d055da4af0e46b2f7166e710204993798b3 # immutable revision
+        with:
+          tool: cargo-llvm-cov
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - name: Enforce the per-file coverage threshold
+        shell: bash
+        env:
+          COVERAGE_SCRIPT: ${{ inputs.coverage-script }}
+        run: |
+          [[ "$COVERAGE_SCRIPT" =~ ^scripts/[A-Za-z0-9._/-]+\.sh$ && "$COVERAGE_SCRIPT" != */../* && "$COVERAGE_SCRIPT" != scripts/../* ]] || {
+            echo "coverage-script must name a repository-local scripts/*.sh file" >&2
+            exit 2
+          }
+          [[ -f "$COVERAGE_SCRIPT" ]] || { echo "coverage script is missing: $COVERAGE_SCRIPT" >&2; exit 2; }
+          bash "$COVERAGE_SCRIPT"
 
   docs:
     name: docs
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - if: inputs.apt-packages != ''
-        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?([ ][a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - run: cargo doc --workspace --all-features --no-deps
         env:
           RUSTDOCFLAGS: -D warnings
@@ -106,36 +156,74 @@ jobs:
     name: msrv
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
       - id: msrv
         shell: bash
         run: |
-          version="$(cargo metadata --no-deps --format-version 1 --quiet | jq -er '
-            .workspace_root as $root
-            | [.packages[] | select(.manifest_path == ($root + "/Cargo.toml")) | .rust_version]
+          version="$(cargo metadata --format-version 1 --quiet | jq -er '
+            .resolve.root as $root
+            | [.packages[] | select(.id == $root) | .rust_version]
             | first // error("workspace root package must declare rust-version")
           ')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master as of 2026-10-10
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - if: inputs.apt-packages != ''
-        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
-      - run: cargo build --workspace --all-targets --all-features
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?([ ][a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
+      - name: Build with the declared MSRV
+        shell: bash
+        env:
+          MSRV_BUILD_TARGETS: ${{ inputs.msrv-build-targets }}
+        run: |
+          if [[ -z "$MSRV_BUILD_TARGETS" ]]; then
+            cargo build --workspace --all-targets --all-features
+            exit
+          fi
+          jq -e '
+            type == "array" and length > 0 and all(.[];
+              (.packages | type == "array" and length > 0 and all(.[]; type == "string" and test("^[A-Za-z0-9_-]+$"))) and
+              ((.features // []) | type == "array" and all(.[]; type == "string" and test("^(dep:[A-Za-z0-9_-]+|[A-Za-z0-9_-]+(\\??/[A-Za-z0-9_.+-]+)?|[A-Za-z0-9_.+-]+)$"))) and
+              ((.all_targets // false) | type == "boolean") and
+              ((.all_features // false) | type == "boolean") and
+              ((.no_default_features // false) | type == "boolean")
+            )
+          ' <<< "$MSRV_BUILD_TARGETS" >/dev/null
+          while IFS= read -r target; do
+            args=()
+            while IFS= read -r package; do args+=(--package "$package"); done \
+              < <(jq -r '.packages[]' <<< "$target")
+            while IFS= read -r feature; do args+=(--features "$feature"); done \
+              < <(jq -r '.features[]?' <<< "$target")
+            [[ "$(jq -r '.all_targets // false' <<< "$target")" == true ]] && args+=(--all-targets)
+            [[ "$(jq -r '.all_features // false' <<< "$target")" == true ]] && args+=(--all-features)
+            [[ "$(jq -r '.no_default_features // false' <<< "$target")" == true ]] && args+=(--no-default-features)
+            cargo build "${args[@]}"
+          done < <(jq -c '.[]' <<< "$MSRV_BUILD_TARGETS")
 
   supply-chain:
     name: supply-chain
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: EmbarkStudios/cargo-deny-action@v2
+      - uses: EmbarkStudios/cargo-deny-action@9c67a826e39827395bfa619cd85cb2aaeb43cfaa # immutable revision
 
   module-e2e:
     name: module-e2e (${{ matrix.os }})
@@ -145,28 +233,63 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
       - id: msrv
         shell: bash
         run: |
-          version="$(cargo metadata --no-deps --format-version 1 --quiet | jq -er '
-            .workspace_root as $root
-            | [.packages[] | select(.manifest_path == ($root + "/Cargo.toml")) | .rust_version]
+          version="$(cargo metadata --format-version 1 --quiet | jq -er '
+            .resolve.root as $root
+            | [.packages[] | select(.id == $root) | .rust_version]
             | first // error("workspace root package must declare rust-version")
           ')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
-      - uses: dtolnay/rust-toolchain@master
+      - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master as of 2026-10-10
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - if: runner.os == 'Linux' && inputs.apt-packages != ''
-        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?([ ][a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
+      - name: Select the module E2E toolchain
+        shell: bash
+        env:
+          MODULE_E2E_TOOLCHAIN: ${{ inputs.module-e2e-toolchain }}
+        run: |
+          case "$MODULE_E2E_TOOLCHAIN" in
+            declared) ;;
+            stable) rustup override set stable ;;
+            *)
+              [[ "$MODULE_E2E_TOOLCHAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+                echo "module-e2e-toolchain must be 'declared', 'stable', or an exact X.Y.Z version" >&2
+                exit 2
+              }
+              rustup toolchain install "$MODULE_E2E_TOOLCHAIN" --profile minimal
+              rustup override set "$MODULE_E2E_TOOLCHAIN"
+              ;;
+          esac
       - shell: bash
-        run: ${{ inputs.module-e2e-command }}
+        env:
+          MODULE_E2E_SCRIPT: ${{ inputs.module-e2e-script }}
+        run: |
+          [[ "$MODULE_E2E_SCRIPT" =~ ^scripts/[A-Za-z0-9._/-]+\.sh$ && "$MODULE_E2E_SCRIPT" != */../* && "$MODULE_E2E_SCRIPT" != scripts/../* ]] || {
+            echo "module-e2e-script must name a repository-local scripts/*.sh file" >&2
+            exit 2
+          }
+          [[ -f "$MODULE_E2E_SCRIPT" ]] || { echo "module E2E script is missing: $MODULE_E2E_SCRIPT" >&2; exit 2; }
+          bash "$MODULE_E2E_SCRIPT"
 
   feature-tests:
     name: feature-tests (${{ matrix.os }})
@@ -176,13 +299,31 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           submodules: recursive
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
       - if: runner.os == 'Linux' && inputs.apt-packages != ''
-        run: sudo apt-get update && sudo apt-get install --yes ${{ inputs.apt-packages }}
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?([ ][a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - shell: bash
-        run: ${{ inputs.feature-test-command }}
+        env:
+          FEATURE_TEST_SCRIPT: ${{ inputs.feature-test-script }}
+        run: |
+          [[ "$FEATURE_TEST_SCRIPT" =~ ^scripts/[A-Za-z0-9._/-]+\.sh$ && "$FEATURE_TEST_SCRIPT" != */../* && "$FEATURE_TEST_SCRIPT" != scripts/../* ]] || {
+            echo "feature-test-script must name a repository-local scripts/*.sh file" >&2
+            exit 2
+          }
+          [[ -f "$FEATURE_TEST_SCRIPT" ]] || { echo "feature test script is missing: $FEATURE_TEST_SCRIPT" >&2; exit 2; }
+          bash "$FEATURE_TEST_SCRIPT"

@@ -17,15 +17,24 @@ publishes the same required check names in every caller:
   `feature-tests (windows-latest)`
 
 Each module owns its test commands and platform dependencies. The workflow
-caller supplies the module's coverage command, module loader suite, feature
-suite, and any Ubuntu packages needed to build or test it. The `test` job runs
-the default feature set; the feature-test command runs on all three operating
+caller supplies repository-relative Bash scripts for its coverage gate, loader
+suite, and feature suite, and any Ubuntu packages needed
+to build or test it. The shared workflow validates those script paths before
+running them. The `test` job runs
+the default feature set; the feature-test script runs on all three operating
 systems. The MSRV job and each module-e2e runner read `rust-version` from the
-root package's `Cargo.toml`, so the compiler version cannot drift from the
-crate declaration. The legacy `msrv` input is optional and ignored while
-existing callers migrate. A caller is ready to become a required-check
-ruleset target only after every supplied command succeeds on its target
-runners.
+root package identity in Cargo metadata, so the compiler version cannot drift
+from the crate declaration or depend on OS path spelling. The legacy `msrv` input is
+optional and ignored while existing callers migrate. `msrv-build-targets` can
+provide validated Cargo build groups when a repository deliberately supports
+an older compiler for its public libraries than for optional or unpublished
+workspace crates. Its JSON specifies only package names, feature lists, and
+build flags, not shell commands. The check still installs the root package's
+declared `rust-version`. `module-e2e-toolchain` defaults to `declared`; set it
+to `stable` for the latest stable compiler, or to an exact `X.Y.Z` release such
+as `1.88.0` when it needs a reproducible compiler newer than the public library
+MSRV. A caller is ready to become a required-check ruleset
+target only after every supplied command succeeds on its target runners.
 
 ## Release callers
 
