@@ -72,6 +72,29 @@ class WorkspaceMsrvTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("workspace members must declare rust-version", result.stderr)
 
+    def test_concrete_root_without_msrv_is_rejected(self):
+        metadata = {
+            "workspace_members": ["root", "member"],
+            "packages": [
+                {"id": "root", "rust_version": None},
+                {"id": "member", "rust_version": "1.88"},
+            ],
+            "resolve": {"root": "root"},
+        }
+        for result in self.select(metadata):
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("workspace root package must declare rust-version", result.stderr)
+
+    def test_malformed_concrete_root_msrv_is_rejected(self):
+        metadata = {
+            "workspace_members": ["root"],
+            "packages": [{"id": "root", "rust_version": "stable"}],
+            "resolve": {"root": "root"},
+        }
+        for result in self.select(metadata):
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("workspace root rust-version must be numeric X.Y or X.Y.Z", result.stderr)
+
     def test_malformed_workspace_member_msrv_is_rejected(self):
         metadata = {
             "workspace_members": ["one", "two"],
