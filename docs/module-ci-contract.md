@@ -22,9 +22,13 @@ suite, and feature suite, and any Ubuntu packages needed
 to build or test it. The shared workflow validates those script paths before
 running them. The `test` job runs
 the default feature set; the feature-test script runs on all three operating
-systems. The MSRV job and each module-e2e runner read `rust-version` from the
-root package identity in Cargo metadata, so the compiler version cannot drift
-from the crate declaration or depend on OS path spelling. The legacy `msrv` input is
+systems. The MSRV job and each module-e2e runner read `rust-version` from Cargo
+metadata. For a concrete workspace, the root package declaration remains
+authoritative. For a virtual workspace, the workflow selects the numerically
+highest declared `rust-version` among workspace members, excluding external
+dependencies. Missing declarations and malformed version strings fail the
+selection instead of silently choosing a compiler. This keeps the compiler
+selection aligned with the workspace rather than OS path spelling. The legacy `msrv` input is
 optional and ignored while existing callers migrate. `msrv-build-targets` can
 provide validated Cargo build groups when a repository deliberately supports
 an older compiler for its public libraries than for optional or unpublished
