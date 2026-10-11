@@ -120,8 +120,8 @@ class WorkspaceMsrvTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             log = root / "calls"
-            metadata = {"packages": [{"name": "a", "rust_version": "1.70"},
-                                     {"name": "b", "rust_version": "1.88"}]}
+            metadata = {"packages": [{"name": "a", "rust_version": "1.70", "features": {"foo": []}},
+                                     {"name": "b", "rust_version": "1.88", "features": {"bar": []}}]}
             cargo = root / "cargo"
             cargo.write_text("#!/usr/bin/env python3\nimport json,sys\n"
                              "if 'metadata' in sys.argv: print(" + repr(json.dumps(metadata)) + ")\n"
@@ -130,11 +130,11 @@ class WorkspaceMsrvTests(unittest.TestCase):
             cargo.chmod(0o755)
             rustup = root / "rustup"; rustup.write_text("#!/bin/sh\nexit 0\n"); rustup.chmod(0o755)
             env = dict(os.environ, PATH=str(root)+os.pathsep+os.environ["PATH"],
-                       MSRV_BUILD_TARGETS=json.dumps([{"packages":["a","b"],"features":["a/foo","b/bar"]}]))
+                       MSRV_BUILD_TARGETS=json.dumps([{"packages":["a","b"],"features":["a/foo","b/bar","foo"]}]))
             result = subprocess.run(["bash","-e","-o","pipefail","-c",script], env=env, capture_output=True, text=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             calls = [json.loads(line) for line in log.read_text().splitlines()]
-            self.assertEqual(calls, [["+1.70","build","--package","a","--features","a/foo"],
+            self.assertEqual(calls, [["+1.70","build","--package","a","--features","a/foo","--features","foo"],
                                      ["+1.88","build","--package","b","--features","b/bar"]])
 
 
