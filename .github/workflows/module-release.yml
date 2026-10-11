@@ -23,6 +23,10 @@ on:
         description: Additional Ubuntu build dependencies.
         type: string
         default: ''
+      asset-name:
+        description: Public archive stem when it differs from the Cargo package name.
+        type: string
+        default: ""
       module-manifest:
         description: Manifest containing the dynamic library package (including nested workspaces).
         type: string
@@ -71,6 +75,7 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           EXTRA_PACKAGED_FILES: ${{ inputs.extra-packaged-files }}
           PUBLISH_CRATES_IO: ${{ inputs.publish-crates-io }}
           MODULE_MANIFEST: ${{ inputs.module-manifest }}
@@ -82,6 +87,7 @@ jobs:
             echo "version must be a semver version without a leading v" >&2
             exit 1
           fi
+          [[ "$MODULE_ASSET" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid asset-name" >&2; exit 2; }
           if [[ ! "$MODULE_CRATE" =~ ^[A-Za-z0-9_-]+$ ]]; then
             echo "module-crate must be a Cargo package name" >&2
             exit 1
@@ -125,6 +131,7 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           MODULE_MANIFEST: ${{ inputs.module-manifest }}
           PUBLISH_CRATES_IO: ${{ inputs.publish-crates-io }}
           CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
@@ -223,6 +230,7 @@ jobs:
         shell: bash
         env:
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           MODULE_VERSION: ${{ inputs.version }}
           MODULE_TARGET: ${{ matrix.target }}
           MODULE_HOST: ${{ matrix.host }}
@@ -233,6 +241,7 @@ jobs:
         shell: pwsh
         env:
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           MODULE_VERSION: ${{ inputs.version }}
           MODULE_TARGET: ${{ matrix.target }}
           MODULE_HOST: ${{ matrix.host }}
@@ -243,21 +252,23 @@ jobs:
         shell: bash
         env:
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           MODULE_VERSION: ${{ inputs.version }}
           MODULE_HOST: ${{ matrix.host }}
-        run: scripts/verify-module.sh --archive "release-assets/${MODULE_CRATE}-${MODULE_VERSION}-${MODULE_HOST}.tar.gz"
+        run: scripts/verify-module.sh --archive "release-assets/${MODULE_ASSET}-${MODULE_VERSION}-${MODULE_HOST}.tar.gz"
       - name: Verify built module
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           MODULE_VERSION: ${{ inputs.version }}
           MODULE_HOST: ${{ matrix.host }}
-        run: ./scripts/verify-module.ps1 -Archive "release-assets/$env:MODULE_CRATE-$env:MODULE_VERSION-$env:MODULE_HOST.zip"
+        run: ./scripts/verify-module.ps1 -Archive "release-assets/$env:MODULE_ASSET-$env:MODULE_VERSION-$env:MODULE_HOST.zip"
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: module-${{ matrix.host }}
-          path: release-assets/${{ inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.*
+          path: release-assets/${{ inputs.asset-name || inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.*
           if-no-files-found: error
           retention-days: 1
 
@@ -298,6 +309,7 @@ jobs:
         shell: bash
         env:
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           MODULE_VERSION: ${{ inputs.version }}
           MODULE_TARGET: ${{ matrix.target }}
           MODULE_HOST: ${{ matrix.host }}
@@ -307,7 +319,7 @@ jobs:
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: module-${{ matrix.host }}
-          path: release-assets/${{ inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.tar.gz
+          path: release-assets/${{ inputs.asset-name || inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.tar.gz
           if-no-files-found: error
           retention-days: 1
 
@@ -425,6 +437,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.tag }}
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           MODULE_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
