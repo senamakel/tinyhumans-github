@@ -33,5 +33,24 @@ class SdkReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("gh release create", publish_steps)
 
 
+class ModuleAssetWorkflowTests(unittest.TestCase):
+    def test_public_asset_name_flows_to_verification_and_uploads(self):
+        path = Path(__file__).parents[1] / ".github/workflows/module-release.yml"
+        text = path.read_text()
+        workflow = yaml.load(text, Loader=yaml.BaseLoader)
+        self.assertEqual(workflow["on"]["workflow_call"]["inputs"]["asset-name"]["default"], "")
+        self.assertIn('[[ "$MODULE_ASSET" =~ ^[A-Za-z0-9_-]+$ ]]', text)
+        for job in ("native", "distros"):
+            uploads = [step for step in workflow["jobs"][job]["steps"]
+                       if step.get("uses", "").startswith("actions/upload-artifact@")]
+            self.assertTrue(uploads)
+            for step in uploads:
+                self.assertIn("inputs.asset-name || inputs.module-crate", step["with"]["path"])
+        native = workflow["jobs"]["native"]["steps"]
+        for step in native:
+            if step.get("name", "").startswith("Verify"):
+                self.assertIn("MODULE_ASSET", step["run"])
+
+
 if __name__ == "__main__":
     unittest.main()
