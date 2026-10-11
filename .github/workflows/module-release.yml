@@ -443,7 +443,7 @@ jobs:
         run: |
           set -euo pipefail
           release_type=()
-          if [[ "$MODULE_VERSION" == *-* ]]; then release_type+=(--prerelease); fi
+          if [[ "${MODULE_VERSION%%+*}" == *-* ]]; then release_type+=(--prerelease); fi
           if gh release view "$RELEASE_TAG" --json assets >/dev/null 2>&1; then
             release=$(gh release view "$RELEASE_TAG" --json assets,isDraft,isPrerelease)
             is_draft=$(jq -r '.isDraft' <<<"$release")

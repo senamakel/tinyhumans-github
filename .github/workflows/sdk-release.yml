@@ -83,7 +83,7 @@ jobs:
           digest="$(sha256sum "release-assets/$archive" | awk '{print $1}')"
           [[ "$(cat release-assets/checksum.toml)" == "\"$archive\" = \"$digest\"" ]]
           release_type=()
-          if [[ "$VERSION" == *-* ]]; then release_type+=(--prerelease); fi
+          if [[ "${VERSION%%+*}" == *-* ]]; then release_type+=(--prerelease); fi
           if gh release view "$TAG" --json assets >/dev/null 2>&1; then
             release="$(gh release view "$TAG" --json assets,isDraft,isPrerelease)"
             is_draft="$(jq -r '.isDraft' <<<"$release")"
