@@ -34,18 +34,20 @@ class MsrvTests(unittest.TestCase):
                          {"id": "b", "rust_version": "1.88"}],
             "resolve": {"root": "a"}}), ["1.85", "1.85"])
 
-    def test_root_without_a_declared_msrv_is_rejected(self):
-        """A rooted workspace cannot borrow a helper package's MSRV."""
+    def test_nonvirtual_root_without_msrv_is_rejected(self):
+        """A missing root declaration must not silently use a member's MSRV."""
         workflow = (Path(__file__).parents[1] / ".github/workflows/module-ci.yml").read_text()
         queries = re.findall(r"jq -er '(.*?)'", workflow, re.S)
-        metadata = {"workspace_members": ["a", "b"], "resolve": {"root": "a"},
+        self.assertEqual(len(queries), 2)
+        metadata = {"workspace_members": ["a", "b"],
                     "packages": [{"id": "a", "rust_version": None},
-                                 {"id": "b", "rust_version": "1.88"}]}
+                                 {"id": "b", "rust_version": "1.88"}],
+                    "resolve": {"root": "a"}}
         for query in queries:
             result = subprocess.run(["jq", "-er", query], input=json.dumps(metadata),
                                     text=True, capture_output=True)
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("root package must declare", result.stderr)
+            self.assertIn("root package must declare rust-version", result.stderr)
 
     def test_selected_package_features_stay_with_their_own_package(self):
         """Each public package builds at its compiler with only its qualified features."""

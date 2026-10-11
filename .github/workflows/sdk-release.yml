@@ -16,7 +16,7 @@ on:
 permissions:
   contents: read
 jobs:
-  source:
+  package:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -49,10 +49,11 @@ jobs:
           name: sdk-release-assets
           path: release-assets/*
           if-no-files-found: error
+          retention-days: 1
 
-  release:
-    needs: source
+  publish:
     runs-on: ubuntu-latest
+    needs: package
     permissions:
       contents: write
     steps:
@@ -60,52 +61,55 @@ jobs:
         with:
           name: sdk-release-assets
           path: release-assets
-      - name: Publish immutable SDK release
+      - name: Verify and publish immutable SDK release
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ inputs.tag }}
-          MODULE_CRATE: ${{ inputs.package }}
-          MODULE_VERSION: ${{ inputs.version }}
+          TAG: ${{ inputs.tag }}
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           set -euo pipefail
-          flags=()
-          if [[ "$MODULE_VERSION" == *-* ]]; then flags+=(--prerelease); fi
-          if gh release view "$RELEASE_TAG" --json assets >/dev/null 2>&1; then
-            release=$(gh release view "$RELEASE_TAG" --json assets,isDraft,isPrerelease)
-            is_draft=$(jq -r '.isDraft' <<<"$release")
-            is_prerelease=$(jq -r '.isPrerelease' <<<"$release")
-            existing=$(jq -r '.assets[].name' <<<"$release" | sort)
-            expected=$(find release-assets -maxdepth 1 -type f -printf '%f\n' | sort)
-            if [[ "$existing" != "$expected" ]]; then
-              echo "release $RELEASE_TAG already exists with a different asset set" >&2
-              exit 1
-            fi
-            existing_assets=$(mktemp -d "${RUNNER_TEMP:-/tmp}/module-release-assets.XXXXXX")
-            gh release download "$RELEASE_TAG" --dir "$existing_assets" --clobber
-            while IFS= read -r expected_file; do
-              name=$(basename "$expected_file")
-              expected_digest=$(sha256sum "$expected_file" | awk '{print $1}')
-              actual_digest=$(sha256sum "$existing_assets/$name" | awk '{print $1}')
-              if [[ "$expected_digest" != "$actual_digest" ]]; then
-                echo "release $RELEASE_TAG asset $name does not match the assembled artifact" >&2
-                exit 1
-              fi
-            done < <(find release-assets -maxdepth 1 -type f -print | sort)
+          [[ "$PACKAGE" =~ ^[A-Za-z0-9_-]+$ ]]
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
+          archive="$PACKAGE-$VERSION-source.tar.gz"
+          expected_files=$'checksum.toml\n'"$archive"
+          actual_files="$(find release-assets -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort)"
+          if [[ "$(find release-assets -mindepth 1 -maxdepth 1 ! -type f -print -quit)" != "" || "$actual_files" != "$(printf '%s\n' "$expected_files" | sort)" ]]; then
+            echo "downloaded SDK artifact has an unexpected file set" >&2
+            exit 1
+          fi
+          digest="$(sha256sum "release-assets/$archive" | awk '{print $1}')"
+          [[ "$(cat release-assets/checksum.toml)" == "\"$archive\" = \"$digest\"" ]]
+          release_type=()
+          if [[ "$VERSION" == *-* ]]; then release_type+=(--prerelease); fi
+          if gh release view "$TAG" --json assets >/dev/null 2>&1; then
+            release="$(gh release view "$TAG" --json assets,isDraft,isPrerelease)"
+            is_draft="$(jq -r '.isDraft' <<<"$release")"
+            is_prerelease="$(jq -r '.isPrerelease' <<<"$release")"
+            existing="$(jq -r '.assets[].name' <<<"$release" | sort)"
+            expected="$(printf '%s\n' checksum.toml "$archive" | sort)"
+            [[ "$existing" == "$expected" ]] || { echo "release $TAG has a different asset set" >&2; exit 1; }
+            existing_assets="$(mktemp -d "${RUNNER_TEMP:-/tmp}/sdk-release-assets.XXXXXX")"
+            gh release download "$TAG" --dir "$existing_assets" --clobber
+            for name in checksum.toml "$archive"; do
+              expected_digest="$(sha256sum "release-assets/$name" | awk '{print $1}')"
+              actual_digest="$(sha256sum "$existing_assets/$name" | awk '{print $1}')"
+              [[ "$expected_digest" == "$actual_digest" ]] || { echo "release $TAG asset $name has different contents" >&2; exit 1; }
+            done
             rm -rf "$existing_assets"
             expected_prerelease=false
-            if [[ ${#flags[@]} -gt 0 ]]; then expected_prerelease=true; fi
-            if [[ "$is_prerelease" != "$expected_prerelease" ]]; then
-              echo "release $RELEASE_TAG has the wrong prerelease state" >&2
-              exit 1
-            fi
-            if [[ "$is_draft" == "true" ]]; then
-              gh release edit "$RELEASE_TAG" --draft=false "${flags[@]}"
-              echo "published verified draft release $RELEASE_TAG"
+            if [[ ${#release_type[@]} -gt 0 ]]; then expected_prerelease=true; fi
+            [[ "$is_prerelease" == "$expected_prerelease" ]] || { echo "release $TAG has the wrong prerelease state" >&2; exit 1; }
+            if [[ "$is_draft" == true ]]; then
+              gh release edit "$TAG" --draft=false "${release_type[@]}"
+              echo "published verified draft release $TAG"
             else
-              echo "release $RELEASE_TAG already exists with verified asset contents; skipping retry"
+              echo "release $TAG already exists with verified asset contents; skipping retry"
             fi
           else
-            gh release create "$RELEASE_TAG" release-assets/* --title "$MODULE_CRATE $RELEASE_TAG" --verify-tag "${flags[@]}"
+            flags=(--verify-tag --title "$TAG")
+            if [[ ${#release_type[@]} -gt 0 ]]; then flags+=(--prerelease); fi
+            gh release create "$TAG" release-assets/* "${flags[@]}"
           fi

@@ -178,9 +178,9 @@ jobs:
           version="$(cargo metadata --format-version 1 --quiet | jq -er '
             . as $metadata
             | .workspace_members as $members
-            | ([.packages[] | select(.id == $metadata.resolve.root) | .rust_version] | first) as $root_msrv
             | if $metadata.resolve.root != null then
-                $root_msrv // error("root package must declare rust-version")
+                ([.packages[] | select(.id == $metadata.resolve.root) | .rust_version] | first)
+                // error("root package must declare rust-version")
               else
               [.packages[] | select(.id as $id | $members | index($id)) | .rust_version
                 | select(. != null) | split(".") | map(tonumber)]
@@ -274,9 +274,9 @@ jobs:
           version="$(cargo metadata --format-version 1 --quiet | jq -er '
             . as $metadata
             | .workspace_members as $members
-            | ([.packages[] | select(.id == $metadata.resolve.root) | .rust_version] | first) as $root_msrv
             | if $metadata.resolve.root != null then
-                $root_msrv // error("root package must declare rust-version")
+                ([.packages[] | select(.id == $metadata.resolve.root) | .rust_version] | first)
+                // error("root package must declare rust-version")
               else
               [.packages[] | select(.id as $id | $members | index($id)) | .rust_version
                 | select(. != null) | split(".") | map(tonumber)]
