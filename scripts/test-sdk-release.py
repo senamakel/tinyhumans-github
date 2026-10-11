@@ -40,7 +40,7 @@ class ModuleAssetWorkflowTests(unittest.TestCase):
         workflow = yaml.load(text, Loader=yaml.BaseLoader)
         self.assertEqual(workflow["on"]["workflow_call"]["inputs"]["asset-name"]["default"], "")
         self.assertIn('[[ "$MODULE_ASSET" =~ ^[A-Za-z0-9_-]+$ ]]', text)
-        for job in ("native", "distros"):
+        for job in ("native", "distro"):
             uploads = [step for step in workflow["jobs"][job]["steps"]
                        if step.get("uses", "").startswith("actions/upload-artifact@")]
             self.assertTrue(uploads)
