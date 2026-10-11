@@ -164,9 +164,32 @@ jobs:
         shell: bash
         run: |
           version="$(cargo metadata --format-version 1 --quiet | jq -er '
-            .resolve.root as $root
-            | [.packages[] | select(.id == $root) | .rust_version]
-            | first // error("workspace root package must declare rust-version")
+            . as $metadata
+            | .resolve.root as $root
+            | if $root != null then
+                ([.packages[] | select(.id == $root) | .rust_version] | first) as $version
+                | if ($version | type) != "string" then
+                    error("workspace root package must declare rust-version")
+                  elif ($version | test("^[0-9]+\\.[0-9]+(\\.[0-9]+)?$")) then
+                    $version
+                  else
+                    error("workspace root rust-version must be numeric X.Y or X.Y.Z")
+                  end
+              else
+                [.packages[]
+                  | select(.id as $id | $metadata.workspace_members | index($id))
+                  | .rust_version
+                  | select(. != null)] as $versions
+                | if ($versions | length) == 0 then
+                    error("workspace members must declare rust-version")
+                  elif any($versions[]; (type != "string") or (test("^[0-9]+\\.[0-9]+(\\.[0-9]+)?$") | not)) then
+                    error("workspace package rust-version must be numeric X.Y or X.Y.Z")
+                  else
+                    [$versions[] | {version: ., parts: (split(".") | map(tonumber))}]
+                    | max_by(.parts)
+                    | .version
+                  end
+              end
           ')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master as of 2026-10-10
@@ -242,9 +265,32 @@ jobs:
         shell: bash
         run: |
           version="$(cargo metadata --format-version 1 --quiet | jq -er '
-            .resolve.root as $root
-            | [.packages[] | select(.id == $root) | .rust_version]
-            | first // error("workspace root package must declare rust-version")
+            . as $metadata
+            | .resolve.root as $root
+            | if $root != null then
+                ([.packages[] | select(.id == $root) | .rust_version] | first) as $version
+                | if ($version | type) != "string" then
+                    error("workspace root package must declare rust-version")
+                  elif ($version | test("^[0-9]+\\.[0-9]+(\\.[0-9]+)?$")) then
+                    $version
+                  else
+                    error("workspace root rust-version must be numeric X.Y or X.Y.Z")
+                  end
+              else
+                [.packages[]
+                  | select(.id as $id | $metadata.workspace_members | index($id))
+                  | .rust_version
+                  | select(. != null)] as $versions
+                | if ($versions | length) == 0 then
+                    error("workspace members must declare rust-version")
+                  elif any($versions[]; (type != "string") or (test("^[0-9]+\\.[0-9]+(\\.[0-9]+)?$") | not)) then
+                    error("workspace package rust-version must be numeric X.Y or X.Y.Z")
+                  else
+                    [$versions[] | {version: ., parts: (split(".") | map(tonumber))}]
+                    | max_by(.parts)
+                    | .version
+                  end
+              end
           ')"
           echo "version=$version" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@e2a55d2ffb04f378e9626c28d38b36d230d1e12f # master as of 2026-10-10
