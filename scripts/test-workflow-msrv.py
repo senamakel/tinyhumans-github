@@ -7,6 +7,7 @@ import unittest
 
 class MsrvTests(unittest.TestCase):
     def query(self, metadata):
+        """Run both workflow queries against a realistic Cargo metadata fixture."""
         workflow = (Path(__file__).parents[1] / ".github/workflows/module-ci.yml").read_text()
         queries = re.findall(r"jq -er '(.*?)'", workflow, re.S)
         self.assertEqual(len(queries), 2)
@@ -17,6 +18,7 @@ class MsrvTests(unittest.TestCase):
         return [result.stdout.strip() for result in results]
 
     def test_virtual_workspace_uses_highest_member_msrv(self):
+        """Keep dependency MSRVs from changing the selected workspace promise."""
         self.assertEqual(self.query({"workspace_members": ["a", "b"],
             "packages": [{"id": "a", "rust_version": "1.9"},
                          {"id": "b", "rust_version": "1.88"},
@@ -24,6 +26,7 @@ class MsrvTests(unittest.TestCase):
             "resolve": {"root": None}}), ["1.88", "1.88"])
 
     def test_root_package_keeps_its_own_msrv(self):
+        """Keep dependency MSRVs from changing the selected workspace promise."""
         self.assertEqual(self.query({"workspace_members": ["a", "b"],
             "packages": [{"id": "a", "rust_version": "1.85"},
                          {"id": "b", "rust_version": "1.88"}],
