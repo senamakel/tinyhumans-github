@@ -240,6 +240,14 @@ jobs:
           ' <<< "$MSRV_BUILD_TARGETS" >/dev/null
           while IFS= read -r target; do
             metadata="$(cargo +stable metadata --format-version 1 --no-deps)"
+            while IFS= read -r feature; do
+              if [[ "$feature" != */* ]] && ! jq -e --arg feature "$feature" --argjson names "$(jq '.packages' <<< "$target")" '
+                any(.packages[]; (.name as $name | $names | index($name)) != null and ((.features // {}) | has($feature)))
+              ' <<< "$metadata" >/dev/null; then
+                echo "feature $feature is not declared by any selected package" >&2
+                exit 2
+              fi
+            done < <(jq -r '.features[]?' <<< "$target")
             while IFS= read -r package; do
               version="$(jq -er --arg name "$package" '.packages[] | select(.name == $name) | .rust_version // error("package must declare rust-version")' <<< "$metadata")"
               rustup toolchain install "$version" --profile minimal
@@ -249,6 +257,11 @@ jobs:
                 prefix="${feature%%/*}"
                 if [[ "$feature" == */* && "$prefix" != "$package" ]] &&
                   jq -e --arg prefix "$prefix" '.packages | index($prefix) != null' <<< "$target" >/dev/null; then
+                  continue
+                fi
+                if [[ "$feature" != */* ]] && ! jq -e --arg name "$package" --arg feature "$feature" '
+                  .packages[] | select(.name == $name) | (.features // {}) | has($feature)
+                ' <<< "$metadata" >/dev/null; then
                   continue
                 fi
                 package_args+=(--features "$feature")
