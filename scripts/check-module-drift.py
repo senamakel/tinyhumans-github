@@ -52,7 +52,7 @@ def validate(repo, ci, release, rulesets):
     allowed_release.update({"tinycomputer": {"verify-published"}, "tinydocs": {"source-packages"}}.get(repo, set()))
     if set(release_jobs) - allowed_release or not pinned(job, release_name + ".yml"):
         errors.append("release must call the pinned canonical " + release_name)
-    if repo != "tinybus" and job.get("with", {}).get("distro-builds", True) is not True:
+    if repo != "tinybus" and job.get("with", {}).get("include-distros", True) is not True:
         errors.append("release must enable all 17 native and distro targets")
     active = [x for x in rulesets if x.get("enforcement") == "active" and x.get("target") == "branch"]
     if any("bypass_actors" in x and not admin_bypass(x) for x in active):
