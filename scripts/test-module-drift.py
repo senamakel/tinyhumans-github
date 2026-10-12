@@ -11,7 +11,7 @@ spec.loader.exec_module(drift)
 
 class ContractTests(unittest.TestCase):
     def setUp(self):
-        self.ci = {"jobs": {"module-ci": {"uses": drift.PREFIX + "module-ci.yml@" + "a" * 40}}}
+        self.ci = {"on": {"push": {}, "pull_request": {}}, "jobs": {"module-ci": {"uses": drift.PREFIX + "module-ci.yml@" + "a" * 40}}}
         self.release = {"jobs": {"module-release": {"uses": drift.PREFIX + "module-release.yml@" + "a" * 40, "with": {"include-distros": True}}}}
         self.ruleset = {
             "target": "branch", "enforcement": "active",
@@ -33,6 +33,17 @@ class ContractTests(unittest.TestCase):
         for suffix in ("module-ci.yml@main", "other.yml@" + "a" * 40):
             self.ci["jobs"]["module-ci"]["uses"] = drift.PREFIX + suffix
             self.assertTrue(self.validate())
+
+    def test_skippable_shared_jobs_fail(self):
+        self.ci["jobs"]["module-ci"]["if"] = False
+        self.assertTrue(self.validate())
+        self.setUp()
+        self.release["jobs"]["module-release"]["if"] = False
+        self.assertTrue(self.validate())
+
+    def test_missing_pr_trigger_fails(self):
+        del self.ci["on"]["pull_request"]
+        self.assertTrue(self.validate())
 
     def test_renamed_ci_job_fails(self):
         self.ci["jobs"]["renamed"] = self.ci["jobs"].pop("module-ci")
