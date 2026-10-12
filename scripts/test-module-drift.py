@@ -41,6 +41,20 @@ class ContractTests(unittest.TestCase):
         self.release["jobs"]["module-release"]["if"] = False
         self.assertTrue(self.validate())
 
+    def test_list_trigger_form_passes_and_single_event_fails(self):
+        self.ci["on"] = ["push", "pull_request"]
+        self.assertEqual(self.validate(), [])
+        self.ci["on"] = "push"
+        self.assertTrue(self.validate())
+        self.ci["on"] = None
+        self.assertTrue(self.validate())
+
+    def test_audit_checkout_does_not_persist_credentials(self):
+        path = pathlib.Path(__file__).parents[1] / ".github/workflows/ci.yml"
+        workflow = drift.yaml.safe_load(path.read_text())
+        checkout = workflow["jobs"]["module-drift"]["steps"][0]
+        self.assertIs(checkout.get("with", {}).get("persist-credentials"), False)
+
     def test_missing_pr_trigger_fails(self):
         del self.ci["on"]["pull_request"]
         self.assertTrue(self.validate())
