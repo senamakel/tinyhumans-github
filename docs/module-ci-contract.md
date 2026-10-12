@@ -102,7 +102,10 @@ fail the job rather than silently skipping a repository. It checks canonical
 callers pinned to commit SHAs, all 17 release targets (with the documented
 TinyBus SDK exception), the 13 Actions check contexts, strict up-to-date main
 protection, required PRs and resolved review threads, deletion/force-push
-protection, and administrator bypass on every active branch ruleset.
+protection. GitHub hides bypass actors from the default CI token; the audit
+prints that limitation. With administrator credentials locally, it additionally
+checks administrator bypass on every active branch ruleset. Visible bypass
+metadata that violates the contract always fails.
 
 Run locally with Python and PyYAML 6.0.3:
 

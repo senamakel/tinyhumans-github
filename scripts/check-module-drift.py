@@ -55,7 +55,7 @@ def validate(repo, ci, release, rulesets):
     if repo != "tinybus" and job.get("with", {}).get("distro-builds", True) is not True:
         errors.append("release must enable all 17 native and distro targets")
     active = [x for x in rulesets if x.get("enforcement") == "active" and x.get("target") == "branch"]
-    if any(not admin_bypass(x) for x in active):
+    if any("bypass_actors" in x and not admin_bypass(x) for x in active):
         errors.append("every active branch ruleset must allow administrator bypass always")
     protected = False
     for ruleset in active:
@@ -67,8 +67,7 @@ def validate(repo, ci, release, rulesets):
                   if x.get("integration_id") == 15368}
         if (set(CHECKS) <= checks and status.get("strict_required_status_checks_policy") is True
                 and {"pull_request", "deletion", "non_fast_forward"} <= rules.keys()
-                and rules["pull_request"].get("required_review_thread_resolution") is True
-                and admin_bypass(ruleset)):
+                and rules["pull_request"].get("required_review_thread_resolution") is True):
             protected = True
     if not protected:
         errors.append("main lacks an active strict PR ruleset with all 13 GitHub Actions checks")
@@ -102,6 +101,8 @@ def main():
                 raise ValueError("ruleset listing may be truncated")
             rulesets = [api(repo + "/rulesets/" + str(x["id"])) for x in listed]
             errors = validate(repo, ci, release, rulesets)
+            if any("bypass_actors" not in x for x in rulesets if x.get("enforcement") == "active"):
+                print(repo + ": bypass actors hidden by GitHub; administrator credentials required to audit bypass")
         except Exception as error:
             # Do not print request headers or tokens.
             errors = ["GitHub metadata audit failed: " + type(error).__name__]

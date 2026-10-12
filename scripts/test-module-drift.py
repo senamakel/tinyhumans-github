@@ -71,6 +71,12 @@ class ContractTests(unittest.TestCase):
         self.ruleset["bypass_actors"] = []
         self.assertTrue(self.validate())
 
+    def test_public_ruleset_metadata_checks_visible_contract(self):
+        del self.ruleset["bypass_actors"]
+        self.assertEqual(self.validate(), [])
+        self.ruleset["rules"][-1]["parameters"]["required_status_checks"].pop()
+        self.assertTrue(self.validate())
+
     def test_documented_supplemental_jobs_pass(self):
         self.ci["jobs"]["wallet-dependency-boundaries"] = {"steps": []}
         self.assertEqual(drift.validate("tinywallet", self.ci, self.release, [self.ruleset]), [])
