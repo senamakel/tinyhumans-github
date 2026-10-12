@@ -12,7 +12,7 @@ spec.loader.exec_module(drift)
 class ContractTests(unittest.TestCase):
     def setUp(self):
         self.ci = {"jobs": {"module-ci": {"uses": drift.PREFIX + "module-ci.yml@" + "a" * 40}}}
-        self.release = {"jobs": {"module-release": {"uses": drift.PREFIX + "module-release.yml@" + "a" * 40, "with": {"distro-builds": True}}}}
+        self.release = {"jobs": {"module-release": {"uses": drift.PREFIX + "module-release.yml@" + "a" * 40, "with": {"include-distros": True}}}}
         self.ruleset = {
             "target": "branch", "enforcement": "active",
             "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
@@ -43,7 +43,7 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(self.validate())
 
     def test_disabled_distro_builds_fail(self):
-        self.release["jobs"]["module-release"]["with"]["distro-builds"] = False
+        self.release["jobs"]["module-release"]["with"]["include-distros"] = False
         self.assertTrue(self.validate())
 
     def test_missing_or_wrong_app_check_fails(self):
