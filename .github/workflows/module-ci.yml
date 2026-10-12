@@ -114,6 +114,18 @@ jobs:
         with:
           tool: cargo-llvm-cov
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - if: inputs.apt-packages != ''
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?([ ][a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - name: Enforce the per-file coverage threshold
         shell: bash
         env:
@@ -227,15 +239,38 @@ jobs:
             )
           ' <<< "$MSRV_BUILD_TARGETS" >/dev/null
           while IFS= read -r target; do
-            args=()
-            while IFS= read -r package; do args+=(--package "$package"); done \
-              < <(jq -r '.packages[]' <<< "$target")
-            while IFS= read -r feature; do args+=(--features "$feature"); done \
-              < <(jq -r '.features[]?' <<< "$target")
-            [[ "$(jq -r '.all_targets // false' <<< "$target")" == true ]] && args+=(--all-targets)
-            [[ "$(jq -r '.all_features // false' <<< "$target")" == true ]] && args+=(--all-features)
-            [[ "$(jq -r '.no_default_features // false' <<< "$target")" == true ]] && args+=(--no-default-features)
-            cargo build "${args[@]}"
+            metadata="$(cargo +stable metadata --format-version 1 --no-deps)"
+            while IFS= read -r feature; do
+              if [[ "$feature" != */* ]] && ! jq -e --arg feature "$feature" --argjson names "$(jq '.packages' <<< "$target")" '
+                any(.packages[]; (.name as $name | $names | index($name)) != null and ((.features // {}) | has($feature)))
+              ' <<< "$metadata" >/dev/null; then
+                echo "feature $feature is not declared by any selected package" >&2
+                exit 2
+              fi
+            done < <(jq -r '.features[]?' <<< "$target")
+            while IFS= read -r package; do
+              version="$(jq -er --arg name "$package" '.packages[] | select(.name == $name) | .rust_version // error("package must declare rust-version")' <<< "$metadata")"
+              rustup toolchain install "$version" --profile minimal
+              # Replace the group's package list with the package being checked.
+              package_args=(--package "$package")
+              while IFS= read -r feature; do
+                prefix="${feature%%/*}"
+                if [[ "$feature" == */* && "$prefix" != "$package" ]] &&
+                  jq -e --arg prefix "$prefix" '.packages | index($prefix) != null' <<< "$target" >/dev/null; then
+                  continue
+                fi
+                if [[ "$feature" != */* ]] && ! jq -e --arg name "$package" --arg feature "$feature" '
+                  .packages[] | select(.name == $name) | (.features // {}) | has($feature)
+                ' <<< "$metadata" >/dev/null; then
+                  continue
+                fi
+                package_args+=(--features "$feature")
+              done < <(jq -r '.features[]?' <<< "$target")
+              [[ "$(jq -r '.all_targets // false' <<< "$target")" == true ]] && package_args+=(--all-targets)
+              [[ "$(jq -r '.all_features // false' <<< "$target")" == true ]] && package_args+=(--all-features)
+              [[ "$(jq -r '.no_default_features // false' <<< "$target")" == true ]] && package_args+=(--no-default-features)
+              cargo "+$version" build "${package_args[@]}"
+            done < <(jq -r '.packages[]' <<< "$target")
           done < <(jq -c '.[]' <<< "$MSRV_BUILD_TARGETS")
 
   supply-chain:

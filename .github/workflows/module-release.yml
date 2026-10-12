@@ -15,6 +15,22 @@ on:
         description: Dynamic library Cargo package name.
         type: string
         required: true
+      source-artifact:
+        description: Optional Actions artifact containing additional source packages for the immutable release.
+        type: string
+        default: ''
+      apt-packages:
+        description: Additional Ubuntu build dependencies.
+        type: string
+        default: ''
+      asset-name:
+        description: Public archive stem when it differs from the Cargo package name.
+        type: string
+        default: ""
+      module-manifest:
+        description: Manifest containing the dynamic library package (including nested workspaces).
+        type: string
+        default: Cargo.toml
       extra-packaged-files:
         description: JSON array of additional files the module package script includes.
         type: string
@@ -47,15 +63,22 @@ jobs:
         with:
           ref: ${{ inputs.tag }}
           submodules: recursive
+          fetch-depth: 0
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - name: Require a reviewed source commit
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor HEAD origin/main
       - name: Validate release metadata
         shell: bash
         env:
           VERSION: ${{ inputs.version }}
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           EXTRA_PACKAGED_FILES: ${{ inputs.extra-packaged-files }}
           PUBLISH_CRATES_IO: ${{ inputs.publish-crates-io }}
+          MODULE_MANIFEST: ${{ inputs.module-manifest }}
           CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
@@ -64,6 +87,7 @@ jobs:
             echo "version must be a semver version without a leading v" >&2
             exit 1
           fi
+          [[ "$MODULE_ASSET" =~ ^[A-Za-z0-9_-]+$ ]] || { echo "invalid asset-name" >&2; exit 2; }
           if [[ ! "$MODULE_CRATE" =~ ^[A-Za-z0-9_-]+$ ]]; then
             echo "module-crate must be a Cargo package name" >&2
             exit 1
@@ -107,11 +131,18 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
+          MODULE_MANIFEST: ${{ inputs.module-manifest }}
           PUBLISH_CRATES_IO: ${{ inputs.publish-crates-io }}
           CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
         run: |
           set -euo pipefail
-          metadata=$(cargo metadata --format-version 1 --no-deps)
+          [[ "$MODULE_MANIFEST" =~ ^[A-Za-z0-9._/-]+Cargo.toml$ || "$MODULE_MANIFEST" == Cargo.toml ]] &&
+            [[ "$MODULE_MANIFEST" != /* && "$MODULE_MANIFEST" != ../* && "$MODULE_MANIFEST" != */../* ]] || {
+            echo "module-manifest must be a repository-relative Cargo.toml path" >&2
+            exit 2
+          }
+          metadata=$(cargo metadata --manifest-path "$MODULE_MANIFEST" --format-version 1 --no-deps)
           module_version=$(jq -r --arg name "$MODULE_CRATE" \
             '[.packages[] | select(.name == $name) | .version] | if length == 1 then .[0] else "" end' \
             <<<"$metadata")
@@ -180,11 +211,26 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ${{ matrix.host }}
+      - if: runner.os == 'Linux' && inputs.apt-packages != ''
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?([ ][a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - name: Build module package
         if: runner.os != 'Windows'
         shell: bash
         env:
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           MODULE_VERSION: ${{ inputs.version }}
           MODULE_TARGET: ${{ matrix.target }}
           MODULE_HOST: ${{ matrix.host }}
@@ -195,6 +241,7 @@ jobs:
         shell: pwsh
         env:
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           MODULE_VERSION: ${{ inputs.version }}
           MODULE_TARGET: ${{ matrix.target }}
           MODULE_HOST: ${{ matrix.host }}
@@ -205,21 +252,23 @@ jobs:
         shell: bash
         env:
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           MODULE_VERSION: ${{ inputs.version }}
           MODULE_HOST: ${{ matrix.host }}
-        run: scripts/verify-module.sh --archive "release-assets/${MODULE_CRATE}-${MODULE_VERSION}-${MODULE_HOST}.tar.gz"
+        run: scripts/verify-module.sh --archive "release-assets/${MODULE_ASSET}-${MODULE_VERSION}-${MODULE_HOST}.tar.gz"
       - name: Verify built module
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           MODULE_VERSION: ${{ inputs.version }}
           MODULE_HOST: ${{ matrix.host }}
-        run: ./scripts/verify-module.ps1 -Archive "release-assets/$env:MODULE_CRATE-$env:MODULE_VERSION-$env:MODULE_HOST.zip"
+        run: ./scripts/verify-module.ps1 -Archive "release-assets/$env:MODULE_ASSET-$env:MODULE_VERSION-$env:MODULE_HOST.zip"
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: module-${{ matrix.host }}
-          path: release-assets/${{ inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.*
+          path: release-assets/${{ inputs.asset-name || inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.*
           if-no-files-found: error
           retention-days: 1
 
@@ -260,6 +309,7 @@ jobs:
         shell: bash
         env:
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           MODULE_VERSION: ${{ inputs.version }}
           MODULE_TARGET: ${{ matrix.target }}
           MODULE_HOST: ${{ matrix.host }}
@@ -269,7 +319,7 @@ jobs:
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: module-${{ matrix.host }}
-          path: release-assets/${{ inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.tar.gz
+          path: release-assets/${{ inputs.asset-name || inputs.module-crate }}-${{ inputs.version }}-${{ matrix.host }}.tar.gz
           if-no-files-found: error
           retention-days: 1
 
@@ -310,6 +360,38 @@ jobs:
           checksum_args=()
           for archive in "${archives[@]}"; do checksum_args+=(--path "$archive"); done
           cargo run --locked --manifest-path vendor/tinybus/Cargo.toml --features cli --bin tinybus -- modules checksum "${checksum_args[@]}" --output release-assets/checksum.toml
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        if: inputs.source-artifact != ''
+        with:
+          name: ${{ inputs.source-artifact }}
+          path: source-assets
+      - name: Merge source files without overwriting module assets
+        if: inputs.source-artifact != ''
+        shell: bash
+        run: |
+          python3 - source-assets release-assets <<'PYTHON'
+          """Merge flat source packages while preserving verified module artifacts."""
+          from pathlib import Path
+          import shutil
+          import sys
+          
+          def merge(source, destination):
+              """Validate every source entry before copying any files."""
+              source, destination = Path(source), Path(destination)
+              files = list(source.iterdir())
+              if not files:
+                  raise ValueError("source artifact is empty")
+              for entry in files:
+                  if entry.is_symlink() or not entry.is_file():
+                      raise ValueError("source artifacts must contain only top-level regular files")
+                  if (destination / entry.name).exists():
+                      raise ValueError("source artifact collides with module asset: " + entry.name)
+              for entry in files:
+                  shutil.copyfile(entry, destination / entry.name)
+          
+          if __name__ == "__main__":
+              merge(*sys.argv[1:])
+          PYTHON
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: module-release-assets
@@ -329,10 +411,23 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - if: inputs.apt-packages != ''
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?([ ][a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - name: Verify the crate package before publishing an immutable release
         env:
+          MODULE_MANIFEST: ${{ inputs.module-manifest }}
           CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
-        run: cargo publish --dry-run --locked --package "$CRATES_IO_PACKAGE"
+        run: cargo publish --manifest-path "$MODULE_MANIFEST" --dry-run --locked --package "$CRATES_IO_PACKAGE"
 
   release:
     name: create immutable release
@@ -354,12 +449,13 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RELEASE_TAG: ${{ inputs.tag }}
           MODULE_CRATE: ${{ inputs.module-crate }}
+          MODULE_ASSET: ${{ inputs.asset-name || inputs.module-crate }}
           MODULE_VERSION: ${{ inputs.version }}
         shell: bash
         run: |
           set -euo pipefail
           release_type=()
-          if [[ "$MODULE_VERSION" == *-* ]]; then release_type+=(--prerelease); fi
+          if [[ "${MODULE_VERSION%%+*}" == *-* ]]; then release_type+=(--prerelease); fi
           if gh release view "$RELEASE_TAG" --json assets >/dev/null 2>&1; then
             release=$(gh release view "$RELEASE_TAG" --json assets,isDraft,isPrerelease)
             is_draft=$(jq -r '.isDraft' <<<"$release")
@@ -410,9 +506,22 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - if: inputs.apt-packages != ''
+        shell: bash
+        env:
+          APT_PACKAGES: ${{ inputs.apt-packages }}
+        run: |
+          [[ "$APT_PACKAGES" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?([ ][a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?)*$ ]] || {
+            echo "apt-packages must be a space-separated list of package names" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - name: Publish crate unless this release retry already published it
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+          MODULE_MANIFEST: ${{ inputs.module-manifest }}
           CRATES_IO_PACKAGE: ${{ inputs.crates-io-package }}
           MODULE_VERSION: ${{ inputs.version }}
         shell: bash
@@ -423,7 +532,7 @@ jobs:
           if [[ "$status" == "200" ]]; then
             echo "$CRATES_IO_PACKAGE $MODULE_VERSION is already published; skipping retry"
           elif [[ "$status" == "404" ]]; then
-            cargo publish --locked --package "$CRATES_IO_PACKAGE"
+            cargo publish --manifest-path "$MODULE_MANIFEST" --locked --package "$CRATES_IO_PACKAGE"
           else
             echo "crates.io returned HTTP $status while checking the package version" >&2
             exit 1
