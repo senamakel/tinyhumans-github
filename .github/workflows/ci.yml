@@ -2,6 +2,9 @@ name: Shared workflow checks
 on:
   push:
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "23 5 * * *"
 permissions:
   contents: read
 jobs:
@@ -9,7 +12,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
       - run: python3 scripts/test-workflow-msrv.py
       - run: python3 scripts/test-source-assets.py
       - run: python3 -m pip install PyYAML==6.0.3
       - run: python3 scripts/test-sdk-release.py
+      - run: python3 scripts/test-module-drift.py
+  module-drift:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: python3 -m pip install PyYAML==6.0.3
+      - run: python3 scripts/check-module-drift.py
+        env:
+          GH_TOKEN: ${{ github.token }}

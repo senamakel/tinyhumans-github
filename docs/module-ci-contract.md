@@ -79,7 +79,7 @@ publish can be retried safely: the workflow recognizes an already-published
 crate version and skips it.
 
 Do not rename or remove a required job in the shared workflow without updating
-the organization ruleset and the drift check in OpenHuman in the same change.
+the organization ruleset and the shared drift check in the same change.
 
 ## Version changes and SDK releases
 
@@ -92,3 +92,31 @@ TinyBus owns the loader/runtime SDK and has no loadable cdylib. It calls the
 shared sdk-release.yml to publish a source archive and checksum.toml. Native
 module archives and module-load verification are not applicable to that SDK;
 its three-platform loader fixture tests remain required CI checks.
+
+## Drift detection
+
+The shared repository's CI runs offline regression tests on every PR. On every
+push, manual dispatch, and daily schedule, the module-drift job reads the public
+main workflows and active rulesets of all 13 upstream repositories. API errors
+fail the job rather than silently skipping a repository. It checks canonical
+callers pinned to commit SHAs, all 17 release targets (with the documented
+TinyBus SDK exception), the 13 Actions check contexts, strict up-to-date main
+protection, required PRs and resolved review threads, deletion/force-push
+protection. GitHub hides bypass actors from the default CI token; the audit
+prints that limitation. With administrator credentials locally, it additionally
+checks administrator bypass on every active branch ruleset. Visible bypass
+metadata that violates the contract always fails.
+
+Run locally with Python and PyYAML 6.0.3:
+
+```sh
+python3 scripts/test-module-drift.py
+GH_TOKEN="$(gh auth token)" python3 scripts/check-module-drift.py
+```
+
+This verifies the workflow and ruleset contract. Each module remains responsible
+for the behavior and completeness of its scenario and module member tests.
+
+Documented supplemental jobs remain allowed: TinyWallet dependency boundaries,
+TinyComputer published-artifact verification, and TinyDocs source packaging.
+They supplement the shared checks and release rather than replacing them.
