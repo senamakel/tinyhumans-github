@@ -42,12 +42,15 @@ def validate(repo, ci, release, rulesets):
     """Return all contract violations from already decoded API documents."""
     errors = []
     jobs = ci.get("jobs", {})
-    if set(jobs) != {"module-ci"} or not pinned(jobs.get("module-ci", {}), "module-ci.yml"):
-        errors.append("CI must contain only module-ci calling the pinned canonical workflow")
+    allowed_ci = {"module-ci", *({"wallet-dependency-boundaries"} if repo == "tinywallet" else set())}
+    if set(jobs) - allowed_ci or not pinned(jobs.get("module-ci", {}), "module-ci.yml"):
+        errors.append("CI must call the pinned canonical workflow with only documented supplemental jobs")
     release_name = "sdk-release" if repo == "tinybus" else "module-release"
     release_jobs = release.get("jobs", {})
     job = release_jobs.get(release_name, {})
-    if set(release_jobs) - {"resolve", release_name} or not pinned(job, release_name + ".yml"):
+    allowed_release = {"resolve", release_name}
+    allowed_release.update({"tinycomputer": {"verify-published"}, "tinydocs": {"source-packages"}}.get(repo, set()))
+    if set(release_jobs) - allowed_release or not pinned(job, release_name + ".yml"):
         errors.append("release must call the pinned canonical " + release_name)
     if repo != "tinybus" and job.get("with", {}).get("distro-builds", True) is not True:
         errors.append("release must enable all 17 native and distro targets")

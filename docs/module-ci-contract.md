@@ -113,3 +113,7 @@ GH_TOKEN="$(gh auth token)" python3 scripts/check-module-drift.py
 
 This verifies the workflow and ruleset contract. Each module remains responsible
 for the behavior and completeness of its scenario and module member tests.
+
+Documented supplemental jobs remain allowed: TinyWallet dependency boundaries,
+TinyComputer published-artifact verification, and TinyDocs source packaging.
+They supplement the shared checks and release rather than replacing them.

@@ -71,6 +71,16 @@ class ContractTests(unittest.TestCase):
         self.ruleset["bypass_actors"] = []
         self.assertTrue(self.validate())
 
+    def test_documented_supplemental_jobs_pass(self):
+        self.ci["jobs"]["wallet-dependency-boundaries"] = {"steps": []}
+        self.assertEqual(drift.validate("tinywallet", self.ci, self.release, [self.ruleset]), [])
+        self.assertTrue(self.validate())
+        self.setUp()
+        for repo, job in (("tinydocs", "source-packages"), ("tinycomputer", "verify-published")):
+            release = copy.deepcopy(self.release)
+            release["jobs"][job] = {"steps": []}
+            self.assertEqual(drift.validate(repo, self.ci, release, [self.ruleset]), [])
+
     def test_sdk_exception_is_explicit(self):
         self.release = {"jobs": {"sdk-release": {"uses": drift.PREFIX + "sdk-release.yml@" + "a" * 40}}}
         self.assertEqual(drift.validate("tinybus", self.ci, self.release, [self.ruleset]), [])
