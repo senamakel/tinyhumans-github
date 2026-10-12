@@ -43,7 +43,8 @@ def validate(repo, ci, release, rulesets):
     errors = []
     # PyYAML's YAML 1.1 loader decodes the unquoted Actions "on" key as True.
     events = ci.get("on", ci.get(True, {}))
-    if not isinstance(events, dict) or not {"push", "pull_request"} <= events.keys():
+    names = {events} if isinstance(events, str) else set(events or ())
+    if not {"push", "pull_request"} <= names:
         errors.append("CI must run on pushes and pull requests")
     jobs = ci.get("jobs", {})
     allowed_ci = {"module-ci", *({"wallet-dependency-boundaries"} if repo == "tinywallet" else set())}
