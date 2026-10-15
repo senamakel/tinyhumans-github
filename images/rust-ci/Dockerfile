@@ -32,11 +32,16 @@ RUN curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
     && rm -rf /var/lib/apt/lists/*
 
 # Rust: the stable release CI builds with, the MSRV it is checked against,
-# and the components clippy, fmt and cargo-llvm-cov need. Both are installed
+# a nightly with Cranelift, and the components clippy, fmt and cargo-llvm-cov need. Both are installed
 # under the names workflows ask rustup for (`stable` and `1.96`), so
 # dtolnay/rust-toolchain finds them instead of downloading them again.
 ARG RUST_STABLE=1.99.0
 ARG RUST_MSRV=1.96
+# A dated nightly with the Cranelift codegen backend, for fast debug builds
+# and tests: `cargo +nightly-... -Zcodegen-backend` with
+# CARGO_PROFILE_DEV_CODEGEN_BACKEND=cranelift. Cranelift has no coverage
+# instrumentation, so cargo llvm-cov stays on stable.
+ARG RUST_NIGHTLY=nightly-2026-10-14
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
@@ -46,6 +51,8 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no
         -c rustfmt -c clippy -c llvm-tools-preview \
     && test "$(rustc +stable --version | cut -d' ' -f2)" = "${RUST_STABLE}" \
     && rustup toolchain install "${RUST_MSRV}" --profile minimal \
+    && rustup toolchain install "${RUST_NIGHTLY}" --profile minimal \
+        -c rustc-codegen-cranelift-preview -c clippy -c rustfmt \
     && rustup default stable \
     && chmod -R a+w "${RUSTUP_HOME}" "${CARGO_HOME}"
 
@@ -69,6 +76,7 @@ RUN set -eu; dl="$(mktemp -d)"; \
 
 # Fail the build, not a CI job, when something above is missing.
 RUN rustc +stable --version && rustc "+${RUST_MSRV}" --version && cargo clippy --version \
+    && rustc "+${RUST_NIGHTLY}" -Zcodegen-backend=cranelift --version \
     && cargo fmt --version && cargo llvm-cov --version && cargo deny --version \
     && tinymold --version && mongod --version | head -1 && mongosh --version \
     && mold --version && jq --version
