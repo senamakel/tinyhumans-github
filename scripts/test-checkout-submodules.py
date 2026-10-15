@@ -101,6 +101,15 @@ class CheckoutSubmodulesTests(unittest.TestCase):
         for config in [self.work / ".git/config", *self.work.glob(".git/modules/**/config")]:
             self.assertNotIn("extraheader", config.read_text())
 
+    def test_a_checkout_owned_by_another_user_still_gets_its_submodules(self):
+        # A container job runs as root over a workspace the runner's user owns.
+        # git's test hook makes every repository look foreign, as it does there.
+        out = self.run_script(TOKEN="secret-token", GIT_TEST_ASSUME_DIFFERENT_OWNER="1")
+        self.assertTrue(self.cloned("vendor/lib/vendor/leaf"))
+        self.assertIn("checked out 5 submodules", out)
+        self.assertNotIn("safe.directory", (self.home / ".gitconfig").read_text()
+                         if (self.home / ".gitconfig").exists() else "")
+
     def test_a_failed_clone_fails_the_script(self):
         (self.origin / "leaf").rename(self.origin / "gone")
         result = subprocess.run([str(SCRIPT), str(self.work)], env=ENV, capture_output=True)
