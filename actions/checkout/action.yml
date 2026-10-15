@@ -1,0 +1,67 @@
+# Check a repository out with its submodules, minus the ones a build never
+# reads. actions/checkout clones every submodule one after another; this
+# checks the repository out without them, then adds them shallow, a level at a
+# time and in parallel, skipping every path that matches `exclude-submodules`
+# (the wiki submodules, by default). See README.md beside this file.
+name: Checkout (selective submodules)
+description: actions/checkout, then shallow parallel submodules that skip excluded paths such as wikis.
+
+inputs:
+  ref:
+    description: The branch, tag or SHA to check out; defaults to the event's ref.
+    default: ""
+  path:
+    description: Where to check the repository out, relative to the workspace.
+    default: ""
+  token:
+    description: Token for the repository and any github.com submodule; never written to git config unless persist-credentials is true.
+    default: ${{ github.token }}
+  persist-credentials:
+    description: Whether actions/checkout leaves the token in the repository's git config.
+    default: "false"
+  fetch-depth:
+    description: History depth of the repository itself (0 = all history).
+    default: "1"
+  sparse-checkout:
+    description: Passed to actions/checkout, for skipping directories of the repository itself.
+    default: ""
+  submodules:
+    description: "`recursive` (every level), `true` (the first level only) or `false`."
+    default: recursive
+  exclude-submodules:
+    description: >-
+      Newline-separated globs of submodule paths to leave out, matched against
+      the path from the repository root. `*` also matches `/`, and a pattern
+      without a `/` matches the last path component at any depth, so `wiki`
+      leaves out every submodule called wiki.
+    default: wiki
+  submodule-depth:
+    description: History depth of each submodule.
+    default: "1"
+  jobs:
+    description: How many submodules to clone at once.
+    default: "8"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      with:
+        ref: ${{ inputs.ref }}
+        path: ${{ inputs.path }}
+        token: ${{ inputs.token }}
+        persist-credentials: ${{ inputs.persist-credentials }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+        sparse-checkout: ${{ inputs.sparse-checkout }}
+        submodules: false
+
+    - if: inputs.submodules != 'false'
+      shell: bash
+      env:
+        REPO_DIR: ${{ github.workspace }}/${{ inputs.path }}
+        RECURSIVE: ${{ inputs.submodules == 'recursive' }}
+        EXCLUDE: ${{ inputs.exclude-submodules }}
+        DEPTH: ${{ inputs.submodule-depth }}
+        JOBS: ${{ inputs.jobs }}
+        TOKEN: ${{ inputs.token }}
+      run: '"${GITHUB_ACTION_PATH}/checkout-submodules.sh" "${REPO_DIR}"'
