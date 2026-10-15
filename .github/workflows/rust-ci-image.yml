@@ -1,0 +1,52 @@
+# Builds ghcr.io/tinyhumansai/rust_ci from images/rust-ci/Dockerfile: the
+# toolbox Rust workspaces run their CI jobs in (`container:`). Pull requests
+# build it without pushing; main pushes it whenever its inputs change.
+name: Rust CI image
+on:
+  push:
+    branches: [main]
+    paths:
+      - images/rust-ci/**
+      - .github/workflows/rust-ci-image.yml
+  pull_request:
+    paths:
+      - images/rust-ci/**
+      - .github/workflows/rust-ci-image.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  packages: write
+concurrency:
+  group: rust-ci-image-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Read the image's Rust version
+        id: meta
+        run: |
+          set -euo pipefail
+          rust="$(sed -n 's/^ARG RUST_STABLE=//p' images/rust-ci/Dockerfile)"
+          [ -n "${rust}" ] || { echo "no ARG RUST_STABLE in the Dockerfile" >&2; exit 1; }
+          echo "rust=${rust}" >> "$GITHUB_OUTPUT"
+      - if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v7
+        with:
+          context: images/rust-ci
+          push: ${{ github.event_name != 'pull_request' }}
+          provenance: false
+          # The sha tag names the commit `latest` was built from; pin it.
+          tags: |-
+            ghcr.io/tinyhumansai/rust_ci:latest
+            ghcr.io/tinyhumansai/rust_ci:rust-${{ steps.meta.outputs.rust }}
+            ghcr.io/tinyhumansai/rust_ci:sha-${{ github.sha }}
