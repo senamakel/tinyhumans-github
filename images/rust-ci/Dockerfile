@@ -35,7 +35,7 @@ RUN curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
 # a nightly with Cranelift, and the components clippy, fmt and cargo-llvm-cov need. Both are installed
 # under the names workflows ask rustup for (`stable` and `1.96`), so
 # dtolnay/rust-toolchain finds them instead of downloading them again.
-ARG RUST_STABLE=1.99.0
+ARG RUST_STABLE=1.99.1
 ARG RUST_MSRV=1.96
 # A dated nightly with the Cranelift codegen backend, for fast debug builds
 # and tests: `cargo +nightly-... -Zcodegen-backend` with
