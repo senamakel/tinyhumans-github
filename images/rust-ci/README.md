@@ -7,9 +7,9 @@ command:
 | Component | Version |
 |---|---|
 | Ubuntu | 22.04 (the same base as `openhuman_ci` and the EX63 guest) |
-| Rust | `stable` (1.99.0) with rustfmt, clippy, llvm-tools; `1.96` (MSRV); `nightly-2026-10-14` with the Cranelift backend |
+| Rust | `stable` (1.99.1) with rustfmt, clippy, llvm-tools; `1.96` (MSRV); `nightly-2026-10-14` with the Cranelift backend |
 | cargo-llvm-cov, cargo-deny | 0.9.1, 0.20.2 |
-| tinymold | 0.1.0 |
+| tinymold | 0.2.0 |
 | MongoDB server, mongosh | 7.0.45, latest 2.x |
 | mold, clang, cmake, libssl-dev, pkg-config, jq, git | Ubuntu's |
 
