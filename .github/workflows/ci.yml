@@ -16,6 +16,8 @@ jobs:
           persist-credentials: false
       - run: python3 scripts/test-workflow-msrv.py
       - run: python3 scripts/test-source-assets.py
+      - run: python3 scripts/test-checkout-submodules.py
+      - run: shellcheck actions/checkout/checkout-submodules.sh
       - run: python3 -m pip install PyYAML==6.0.3
       - run: python3 scripts/test-sdk-release.py
       - run: python3 scripts/test-module-drift.py
