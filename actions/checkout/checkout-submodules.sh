@@ -30,13 +30,20 @@ while IFS= read -r line; do
 	[[ -n "${line}" ]] && patterns+=("${line}")
 done <<<"${EXCLUDE:-}"
 
+# Config for every git the updates spawn, through the environment so that it
+# is gone when this script exits. In a container job the workspace belongs to
+# the runner's user but git runs as root, so git refuses every repository in
+# it as unsafe unless safe.directory says otherwise; actions/checkout does the
+# same for its own calls.
+export GIT_CONFIG_COUNT=1
+export GIT_CONFIG_KEY_0="safe.directory"
+export GIT_CONFIG_VALUE_0="*"
 if [[ -n "${TOKEN:-}" ]]; then
-	# Inherited by every git the updates spawn; gone when this script exits.
 	basic="$(printf 'x-access-token:%s' "${TOKEN}" | base64 | tr -d '\n')"
 	echo "::add-mask::${basic}"
-	export GIT_CONFIG_COUNT=1
-	export GIT_CONFIG_KEY_0="http.https://github.com/.extraheader"
-	export GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${basic}"
+	export GIT_CONFIG_COUNT=2
+	export GIT_CONFIG_KEY_1="http.https://github.com/.extraheader"
+	export GIT_CONFIG_VALUE_1="AUTHORIZATION: basic ${basic}"
 fi
 
 excluded() {

@@ -39,4 +39,12 @@ never written to a git config. `persist-credentials` defaults to `false`,
 unlike `actions/checkout`, because CI jobs that build repository code should
 not keep a token in `.git/config`.
 
+## Container jobs
+
+In a `container:` job git runs as root over a workspace the runner's user
+owns, and refuses it as unsafe. The submodule step sets `safe.directory=*`
+for its own git calls, the same way, through the environment. Later steps
+that run git in the workspace need
+`git config --global --add safe.directory "$GITHUB_WORKSPACE"` themselves.
+
 The tests are in `scripts/test-checkout-submodules.py`.
