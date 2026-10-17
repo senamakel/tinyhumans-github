@@ -111,7 +111,7 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
         self.assertNotIn("GH_TOKEN", package)
         self.assertEqual(
             jobs["publish"]["permissions"],
-            {"contents": "write", "pull-requests": "read", "checks": "read"},
+            {"contents": "write"},
         )
         preflight_steps = jobs["preflight"]["steps"]
         self.assertTrue(all("actions/checkout" not in step.get("uses", "") for step in preflight_steps))
@@ -151,13 +151,13 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
             if step.get("name") == "Validate and package reviewed SDK source"
         )
         reviewed_run = reviewed_package["run"].replace(
-            '          actual_sha="$(git rev-parse HEAD)"\n'
-            '          [[ "$actual_sha" == "$SOURCE_SHA" ]]\n',
+            'actual_sha="$(git rev-parse HEAD)"\n'
+            '[[ "$actual_sha" == "$SOURCE_SHA" ]]\n',
             "",
         )
         legacy_run = legacy_package["run"].replace(
-            "          git fetch origin main\n"
-            "          git merge-base --is-ancestor HEAD origin/main\n",
+            "git fetch origin main\n"
+            "git merge-base --is-ancestor HEAD origin/main\n",
             "",
         )
         self.assertEqual(reviewed_run, legacy_run)
@@ -324,6 +324,7 @@ def reviewed_release_fixture(verifier):
     for number, merge in merges.items():
         api.pulls[number] = {
             "number": number,
+            "state": "closed",
             "merged": True,
             "merge_commit_sha": merge,
             "base": {
