@@ -27,7 +27,8 @@ WebKitWebDriver --help
 
 # Compile and link using the headers and libraries needed by Tauri, audio,
 # input and tray support, then initialize GTK in a real headless display.
-check_dir="$(mktemp -d)"
+check_dir="${CARGO_HOME}/target/rust-ci-smoke"
+mkdir -p "$check_dir"
 trap 'rm -rf "$check_dir"' EXIT
 cat > "$check_dir/desktop.c" <<'C'
 #include <gtk/gtk.h>
