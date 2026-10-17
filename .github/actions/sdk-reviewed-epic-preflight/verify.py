@@ -412,8 +412,24 @@ def _verify_required_checks(api, pull: dict) -> None:
         and run["run_attempt"] > 0
         and run.get("check_suite_id") is not None
     ]
+    associated_runs = []
+    for run in canonical_runs:
+        associated_pulls = run.get("pull_requests")
+        if not isinstance(associated_pulls, list) or not associated_pulls:
+            raise VerificationError("canonical CI workflow run has no pull request association")
+        associated_numbers = []
+        for associated_pull in associated_pulls:
+            if not isinstance(associated_pull, dict):
+                raise VerificationError("canonical CI workflow run has a malformed pull request association")
+            number = associated_pull.get("number")
+            if type(number) is not int or number < 1:
+                raise VerificationError("canonical CI workflow run has a malformed pull request association")
+            associated_numbers.append(number)
+        if pull["number"] in associated_numbers:
+            associated_runs.append(run)
+    canonical_runs = associated_runs
     if not canonical_runs:
-        raise VerificationError("canonical CI workflow run could not be proven for the pull request head")
+        raise VerificationError("canonical CI workflow run could not be proven for the exact pull request")
     workflow_run = max(
         canonical_runs,
         key=lambda run: (run["run_number"], run["run_attempt"], run["id"]),
