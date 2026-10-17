@@ -5,6 +5,8 @@ from __future__ import annotations
 import importlib.util
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -13,6 +15,15 @@ import yaml
 
 
 ROOT = Path(__file__).parents[1]
+BASELINE_SOURCE_COMMIT = "0cafb7aada1e706fa237948c52decd9b753b111c"
+UNCHANGED_PATH_BLOBS = {
+    ".github/workflows/module-release.yml": "6e46ec0415347e8c1ac3a1cbf2fe9a7b806cca7d",
+    ".github/workflows/sdk-release.yml": "1db85a6cbc003067983c4f2bf2a86b4935f6119a",
+    ".github/workflows/sdk-reviewed-epic-release.yml": "606a5c9ae9d517ad2be556937caf1376eee7eb2c",
+    ".github/actions/sdk-reviewed-epic-preflight/action.yml": "ebbbf7f3f1d0b80ee9fb36f51451cff836024ee0",
+    ".github/actions/sdk-reviewed-epic-preflight/verify.py": "ac7106d353f3940332db3025852b0c7eb42545d0",
+    ".github/actions/sdk-reviewed-epic-preflight/historical_ci.py": "1b61ab203a55be0f7fedb416a21d372cb25c3325",
+}
 VERIFIER_PATH = ROOT / ".github/actions/module-reviewed-epic-preflight/verify.py"
 SPEC = importlib.util.spec_from_file_location("module_reviewed_verify", VERIFIER_PATH)
 if SPEC is None or SPEC.loader is None:
@@ -290,22 +301,61 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         with self.assertRaisesRegex(VERIFY.VerificationError, "pagination exceeded"):
             api.rest_pages("repos/tinyhumansai/tinyconnectors/pulls")
 
-    def test_existing_sdk_and_module_release_sources_remain_byte_identical_to_upstream(self):
-        import subprocess
-
-        for path in (
-            ".github/workflows/module-release.yml",
-            ".github/workflows/sdk-release.yml",
-            ".github/workflows/sdk-reviewed-epic-release.yml",
-            ".github/actions/sdk-reviewed-epic-preflight/action.yml",
-            ".github/actions/sdk-reviewed-epic-preflight/verify.py",
-            ".github/actions/sdk-reviewed-epic-preflight/historical_ci.py",
-        ):
+    def test_existing_sdk_and_module_release_sources_match_reviewed_baseline_blobs(self):
+        self.assertEqual(BASELINE_SOURCE_COMMIT, "0cafb7aada1e706fa237948c52decd9b753b111c")
+        for path, expected_blob in UNCHANGED_PATH_BLOBS.items():
             result = subprocess.run(
-                ["git", "diff", "--quiet", "upstream/epic/8056-modules-wiring", "--", path],
-                cwd=ROOT, check=False,
+                ["git", "rev-parse", f"HEAD:{path}"],
+                cwd=ROOT, check=False, capture_output=True, text=True,
             )
-            self.assertEqual(result.returncode, 0, f"existing path changed: {path}")
+            self.assertEqual(result.returncode, 0, f"tracked baseline path missing: {path}")
+            self.assertEqual(
+                result.stdout.strip(), expected_blob,
+                f"{path} differs from reviewed source {BASELINE_SOURCE_COMMIT}",
+            )
+
+    def test_baseline_check_works_in_checkout_without_upstream_remote_or_ref(self):
+        if os.environ.get("MODULE_REVIEWED_CLEAN_CHECKOUT_CHILD") == "1":
+            return
+        with tempfile.TemporaryDirectory(prefix="module-reviewed-clean-checkout-") as directory:
+            checkout = Path(directory) / "checkout"
+            init = subprocess.run(
+                ["git", "init", str(checkout)], check=False,
+                capture_output=True, text=True,
+            )
+            self.assertEqual(init.returncode, 0, init.stderr)
+            fetch = subprocess.run(
+                ["git", "-C", str(checkout), "fetch", "--no-tags", str(ROOT),
+                 "HEAD:refs/heads/portable-test"],
+                check=False, capture_output=True, text=True,
+            )
+            self.assertEqual(fetch.returncode, 0, fetch.stderr)
+            checkout_result = subprocess.run(
+                ["git", "-C", str(checkout), "checkout", "--detach", "portable-test"],
+                check=False, capture_output=True, text=True,
+            )
+            self.assertEqual(checkout_result.returncode, 0, checkout_result.stderr)
+            remotes = subprocess.run(
+                ["git", "-C", str(checkout), "remote"],
+                check=False, capture_output=True, text=True,
+            )
+            self.assertNotIn("upstream", remotes.stdout.splitlines())
+            upstream_ref = subprocess.run(
+                ["git", "-C", str(checkout), "show-ref", "--verify",
+                 "refs/remotes/upstream/epic/8056-modules-wiring"],
+                check=False, capture_output=True, text=True,
+            )
+            self.assertNotEqual(upstream_ref.returncode, 0)
+            child_environment = os.environ.copy()
+            child_environment["MODULE_REVIEWED_CLEAN_CHECKOUT_CHILD"] = "1"
+            result = subprocess.run(
+                [sys.executable,
+                 str(checkout / "scripts/test-module-reviewed-epic-release.py"),
+                 "ModuleReviewedReleaseVerifierTests.test_existing_sdk_and_module_release_sources_match_reviewed_baseline_blobs"],
+                cwd=checkout, env=child_environment, check=False,
+                capture_output=True, text=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_preflight_action_pin_is_immutable_and_matches_the_complete_action_tree(self):
         import subprocess
