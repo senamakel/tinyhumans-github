@@ -69,6 +69,8 @@ ARG SCCACHE_VERSION=0.18.0
 ARG SCCACHE_SHA256=45f1447fbe231e3037bde351ef70677dd212216c8d62ae7ca409fecc4d6acc89
 ARG TINYMOLD_VERSION=0.3.0
 ARG TINYMOLD_SHA256=3268dc5ef2f9ab75f5a36fde29142e289a2a9e33440fc788802da99f1be41193
+ARG MOLD_VERSION=2.40.4
+ARG MOLD_SHA256=4c999e19ffa31afa5aa429c679b665d5e2ca5a6b6832ad4b79668e8dcf3d8ec1
 RUN set -eu; dl="$(mktemp -d)"; \
     fetch() { curl -fsSL --retry 3 -o "${dl}/$1" "$2" && echo "$3  ${dl}/$1" | sha256sum -c --quiet -; }; \
     fetch llvm-cov.tgz "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v${CARGO_LLVM_COV_VERSION}/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz" "${CARGO_LLVM_COV_SHA256}"; \
@@ -82,7 +84,16 @@ RUN set -eu; dl="$(mktemp -d)"; \
     fetch tinymold.tgz "https://github.com/tinyhumansai/tinymold/releases/download/v${TINYMOLD_VERSION}/tinymold-${TINYMOLD_VERSION}-x86_64-unknown-linux-gnu.tar.gz" "${TINYMOLD_SHA256}"; \
     mkdir "${dl}/tm"; tar -xzf "${dl}/tinymold.tgz" -C "${dl}/tm"; \
     install -m 0755 "$(find "${dl}/tm" -type f -name tinymold | head -n1)" /usr/local/bin/tinymold; \
+    fetch mold.tgz "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-x86_64-linux.tar.gz" "${MOLD_SHA256}"; \
+    mkdir -p /opt/mold; tar -xzf "${dl}/mold.tgz" -C /opt/mold --strip-components=1; \
+    ln -sf /opt/mold/bin/mold /usr/local/bin/mold; \
+    ln -sf /opt/mold/bin/mold /usr/local/bin/ld.mold; \
     rm -rf "${dl}"
+
+# A target linker survives cargo-llvm-cov replacing RUSTFLAGS and the EX63
+# guest moving CARGO_HOME onto its cache disk. This image is linux/amd64.
+COPY --chmod=0755 mold-linker /usr/local/bin/rust-mold-linker
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=/usr/local/bin/rust-mold-linker
 
 # Node 24 and OpenHuman's package manager, available before pnpm install.
 ARG NODE_VERSION=24.22.0
