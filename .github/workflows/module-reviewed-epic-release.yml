@@ -493,7 +493,7 @@ jobs:
           import sys
 
           DIGEST = re.compile(r"^[0-9a-f]{64}$")
-            ENTRY = re.compile(r'^"([A-Za-z0-9._+-]+)" = "([0-9a-f]{64})"$')
+          ENTRY = re.compile(r'^"([A-Za-z0-9._+-]+)" = "([0-9a-f]{64})"$')
           TINYBUS_ARCHIVE = re.compile(r"^tinybus-source-[0-9a-f]{12}\.tar\.gz$")
 
           def parse_manifest(source):
