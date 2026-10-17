@@ -813,9 +813,9 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
             "tinydocs-source-assets",
         )
 
-    def test_module_checksum_count_excludes_tinydocs_source_archive_and_checks_all_module_outputs(self):
+    def test_checksum_manifest_covers_17_module_archives_and_both_tinydocs_sources(self):
         assemble = self.workflow["jobs"]["assemble"]
-        step = next(step for step in assemble["steps"] if "Require the complete archive set" in step.get("name", ""))
+        step = next(step for step in assemble["steps"] if "Checksum the exact module and source asset set" in step.get("name", ""))
         with tempfile.TemporaryDirectory() as root:
             release = Path(root) / "release-assets"
             release.mkdir()
@@ -830,18 +830,43 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
             fake_bin.mkdir()
             capture = Path(root) / "cargo-args"
             cargo = fake_bin / "cargo"
-            cargo.write_text('''#!/bin/sh
-printf '%s\\n' "$@" > "$CAPTURE_CARGO_ARGS"
+            cargo.write_text(f'''#!{sys.executable}
+import hashlib
+from pathlib import Path
+import sys
+
+args = sys.argv[1:]
+paths = [args[index + 1] for index, value in enumerate(args[:-1]) if value == "--path"]
+output = Path(args[args.index("--output") + 1])
+Path({str(capture)!r}).write_text("\\n".join(args))
+lines = ["[sha256]"]
+for path in paths:
+    asset = Path(path)
+    digest = hashlib.sha256(asset.read_bytes()).hexdigest()
+    lines.append(f'"{{asset.name}}" = "{{digest}}"')
+output.write_text("\\n".join(lines) + "\\n")
 ''')
             cargo.chmod(0o755)
             environment = dict(os.environ, MODULE_ASSET="tinydocs-module", MODULE_VERSION="0.2.4",
+                               MODULE_SOURCE_BUNDLE="tinydocs",
                                PATH=f"{fake_bin}:{os.environ['PATH']}", CAPTURE_CARGO_ARGS=str(capture))
             result = subprocess.run(["bash", "-c", step["run"]], cwd=root, env=environment,
                                     text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             args = capture.read_text().splitlines()
-            self.assertEqual(args.count("--path"), 17)
-            self.assertTrue(all("tinybus-source" not in value for value in args))
+            self.assertEqual(args.count("--path"), 19)
+            self.assertIn("release-assets/tinydocs-bus-0.2.4.crate", args)
+            self.assertIn("release-assets/tinybus-source-0123456789ab.tar.gz", args)
+            manifest = (release / "checksum.toml").read_text()
+            self.assertIn(
+                f'"tinydocs-bus-0.2.4.crate" = "{hashlib.sha256(b"bus crate").hexdigest()}"',
+                manifest,
+            )
+            self.assertIn(
+                f'"tinybus-source-0123456789ab.tar.gz" = "{hashlib.sha256(b"pinned source").hexdigest()}"',
+                manifest,
+            )
+            self.assertEqual(manifest.count(" = "), 19)
 
             module_archive = next(release.glob("tinydocs-module-*.tar.gz"))
             module_archive.unlink()
