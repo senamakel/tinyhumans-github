@@ -311,6 +311,15 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
 
     def test_all_source_execution_jobs_require_preflight_and_use_verified_sha(self):
         jobs = self.workflow["jobs"]
+        self.assertEqual(self.workflow["permissions"], {"contents": "read"})
+        self.assertEqual(
+            jobs["preflight"]["permissions"],
+            {"contents": "read", "pull-requests": "read", "checks": "read", "actions": "read"},
+        )
+        self.assertTrue(all(
+            "actions/checkout" not in step.get("uses", "")
+            for step in jobs["preflight"]["steps"]
+        ))
         source_jobs = ("validate", "native", "distro", "assemble")
         for name in source_jobs:
             with self.subTest(job=name):
@@ -336,6 +345,15 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         write_jobs = [name for name, job in jobs.items()
                       if job.get("permissions", {}).get("contents") == "write"]
         self.assertEqual(write_jobs, ["publish"])
+        self.assertEqual(
+            jobs["publish"]["permissions"],
+            {"contents": "write"},
+        )
+        self.assertEqual(
+            set(jobs["publish"]["needs"]),
+            {"preflight", "validate", "native", "distro", "assemble"},
+        )
+        self.assertNotIn("if", jobs["publish"])
         publish = str(jobs["publish"])
         self.assertIn("tag-only", publish)
         self.assertIn("needs.preflight.outputs.source-sha", publish)
