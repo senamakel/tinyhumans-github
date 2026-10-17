@@ -102,7 +102,8 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
             )
 
         fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
-        fake.api.associations[fake.merges[75]] = [74]
+        first_parent, _ = fake.parents[fake.merges[75]]
+        fake.parents[fake.merges[75]] = (first_parent, "e" * 40)
         with self.assertRaisesRegex(VERIFY.VerificationError, "exact merged pull request"):
             VERIFY.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
