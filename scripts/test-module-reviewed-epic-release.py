@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -740,8 +741,8 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         source_download_index = next(i for i, step in enumerate(steps) if step.get("with", {}).get("name") == "tinydocs-source-assets")
         source_merge_index = next(i for i, step in enumerate(steps) if step.get("name") == "Merge the exact reviewed TinyDocs source bundle")
         upload_index = next(i for i, step in enumerate(steps) if step.get("uses", "").startswith("actions/upload-artifact@"))
-        self.assertLess(checksum_index, source_download_index)
         self.assertLess(source_download_index, source_merge_index)
+        self.assertLess(source_merge_index, checksum_index)
         self.assertLess(source_merge_index, upload_index)
         self.assertEqual(steps[upload_index]["with"]["path"], "release-assets/*")
 
