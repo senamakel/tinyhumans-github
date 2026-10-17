@@ -1,0 +1,89 @@
+...EEEEEE..
+======================================================================
+ERROR: test_legacy_entrypoint_permissions_and_package_publish_logic_are_unchanged (__main__.ReviewedEpicSdkReleaseTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/enamakel/work/tinyhumansai/.github/worktrees/epic-8056-sdk-reviewed-release/scripts/test-sdk-release.py", line 84, in setUp
+    (root / ".github/workflows/sdk-reviewed-epic-release.yml").read_text(),
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1256, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1242, in open
+    return io.open(self, mode, buffering, encoding, errors, newline,
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1110, in _opener
+    return self._accessor.open(self, flags, mode)
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/enamakel/work/tinyhumansai/.github/worktrees/epic-8056-sdk-reviewed-release/.github/workflows/sdk-reviewed-epic-release.yml'
+
+======================================================================
+ERROR: test_new_entrypoint_is_exact_tinybus_epic_and_has_narrow_token_jobs (__main__.ReviewedEpicSdkReleaseTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/enamakel/work/tinyhumansai/.github/worktrees/epic-8056-sdk-reviewed-release/scripts/test-sdk-release.py", line 84, in setUp
+    (root / ".github/workflows/sdk-reviewed-epic-release.yml").read_text(),
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1256, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1242, in open
+    return io.open(self, mode, buffering, encoding, errors, newline,
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1110, in _opener
+    return self._accessor.open(self, flags, mode)
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/enamakel/work/tinyhumansai/.github/worktrees/epic-8056-sdk-reviewed-release/.github/workflows/sdk-reviewed-epic-release.yml'
+
+======================================================================
+ERROR: test_required_check_names_provenance_and_success_are_all_mandatory (__main__.ReviewedEpicSdkReleaseTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/enamakel/work/tinyhumansai/.github/worktrees/epic-8056-sdk-reviewed-release/scripts/test-sdk-release.py", line 84, in setUp
+    (root / ".github/workflows/sdk-reviewed-epic-release.yml").read_text(),
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1256, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1242, in open
+    return io.open(self, mode, buffering, encoding, errors, newline,
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1110, in _opener
+    return self._accessor.open(self, flags, mode)
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/enamakel/work/tinyhumansai/.github/worktrees/epic-8056-sdk-reviewed-release/.github/workflows/sdk-reviewed-epic-release.yml'
+
+======================================================================
+ERROR: test_review_state_is_effective_across_heads_and_threads_fail_closed (__main__.ReviewedEpicSdkReleaseTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/enamakel/work/tinyhumansai/.github/worktrees/epic-8056-sdk-reviewed-release/scripts/test-sdk-release.py", line 84, in setUp
+    (root / ".github/workflows/sdk-reviewed-epic-release.yml").read_text(),
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1256, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1242, in open
+    return io.open(self, mode, buffering, encoding, errors, newline,
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1110, in _opener
+    return self._accessor.open(self, flags, mode)
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/enamakel/work/tinyhumansai/.github/worktrees/epic-8056-sdk-reviewed-release/.github/workflows/sdk-reviewed-epic-release.yml'
+
+======================================================================
+ERROR: test_reviewed_release_verifies_every_epic_merge_and_rejects_bad_history (__main__.ReviewedEpicSdkReleaseTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/enamakel/work/tinyhumansai/.github/worktrees/epic-8056-sdk-reviewed-release/scripts/test-sdk-release.py", line 84, in setUp
+    (root / ".github/workflows/sdk-reviewed-epic-release.yml").read_text(),
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1256, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1242, in open
+    return io.open(self, mode, buffering, encoding, errors, newline,
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1110, in _opener
+    return self._accessor.open(self, flags, mode)
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/enamakel/work/tinyhumansai/.github/worktrees/epic-8056-sdk-reviewed-release/.github/workflows/sdk-reviewed-epic-release.yml'
+
+======================================================================
+ERROR: test_tag_binding_detects_movement_before_checkout_or_publish (__main__.ReviewedEpicSdkReleaseTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/Users/enamakel/work/tinyhumansai/.github/worktrees/epic-8056-sdk-reviewed-release/scripts/test-sdk-release.py", line 84, in setUp
+    (root / ".github/workflows/sdk-reviewed-epic-release.yml").read_text(),
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1256, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors) as f:
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1242, in open
+    return io.open(self, mode, buffering, encoding, errors, newline,
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1110, in _opener
+    return self._accessor.open(self, flags, mode)
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/enamakel/work/tinyhumansai/.github/worktrees/epic-8056-sdk-reviewed-release/.github/workflows/sdk-reviewed-epic-release.yml'
+
+----------------------------------------------------------------------
+Ran 11 tests in 0.086s
+
+FAILED (errors=6)
