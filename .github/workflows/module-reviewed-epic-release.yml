@@ -256,7 +256,6 @@ jobs:
           merge-multiple: true
       - name: Require the complete archive set and create checksum manifest
         shell: bash
-        env:
         run: |
           set -euo pipefail
           shopt -s nullglob
