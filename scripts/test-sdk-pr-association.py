@@ -123,8 +123,9 @@ class WorkflowPullAssociationTests(unittest.TestCase):
             if job_id == reviewed_job_id else original_logs(job_id)
         )
         actual_parents = fake.parents[fake.merges[75]]
+        original_parents = fake.api.commit_parents
         fake.api.commit_parents = lambda commit: (
-            actual_parents if commit in {synthetic, fake.merges[75]} else ()
+            actual_parents if commit in {synthetic, fake.merges[75]} else original_parents(commit)
         )
         self.fake = fake
         self.run_verification()
