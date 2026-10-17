@@ -14,19 +14,33 @@ MAX_LOG_BYTES = 16 * 1024 * 1024
 MAX_LOG_FILES = 64
 
 
-def verify_ci_merge_provenance(api, workflow_run: dict, job: dict, pull: dict,
-                               association: dict | None) -> None:
-    """Bind CI's tested merge to the canonical merged PR, including direct associations."""
+def read_ci_checkout_proof(api, workflow_run: dict, job: dict) -> dict:
+    """Identify the PR and synthetic commit selected by the pinned first checkout step."""
     _verify_reusable_workflow_pin(workflow_run)
     payload = api.job_logs(job["id"])
     text = _decode_job_logs(payload)
-    synthetic_sha = _checkout_merge_sha(text, pull["number"])
-    synthetic_parents = api.commit_parents(synthetic_sha)
-    reviewed_parents = api.commit_parents(pull["merge_sha"])
-    if synthetic_parents != reviewed_parents:
+    pull_number, synthetic_sha = _checkout_merge_proof(text)
+    synthetic_commit = api.commit_details(synthetic_sha)
+    if synthetic_commit["parents"][1] != workflow_run["head_sha"]:
+        raise ValueError("historical CI checkout head did not match the workflow run")
+    return {"pull_number": pull_number, "synthetic_sha": synthetic_sha,
+            "synthetic_commit": synthetic_commit}
+
+
+def verify_ci_merge_provenance(api, workflow_run: dict, job: dict, pull: dict,
+                               association: dict | None, checkout_proof: dict | None = None) -> None:
+    """Bind the tested synthetic merge's ordered parents and tree to the released PR merge."""
+    checkout_proof = checkout_proof or read_ci_checkout_proof(api, workflow_run, job)
+    if checkout_proof["pull_number"] != pull["number"]:
+        raise ValueError("historical fmt checkout did not resolve the exact reviewed PR")
+    synthetic_commit = checkout_proof["synthetic_commit"]
+    reviewed_commit = api.commit_details(pull["merge_sha"])
+    if synthetic_commit["parents"] != reviewed_commit["parents"]:
         raise ValueError("historical CI checkout parents did not match the reviewed merge")
+    if synthetic_commit["tree_sha"] != reviewed_commit["tree_sha"]:
+        raise ValueError("historical CI checkout tree did not match the reviewed merge tree")
     if association is not None:
-        _verify_event_association(association, pull, reviewed_parents)
+        _verify_event_association(association, pull, reviewed_commit["parents"])
 
 
 def _verify_event_association(association: dict, pull: dict,
@@ -105,7 +119,7 @@ def _decode_job_logs(payload: bytes) -> str:
     return "\n".join(chunks)
 
 
-def _checkout_merge_sha(text: str, reviewed_pr: int) -> str:
+def _checkout_merge_proof(text: str) -> tuple[int, str]:
     lines = text.splitlines()
     complete_job = [
         i for i, line in enumerate(lines)
@@ -151,17 +165,20 @@ def _checkout_merge_sha(text: str, reviewed_pr: int) -> str:
     checkout_end = action_starts[1] if len(action_starts) > 1 else len(lines)
     checkout_lines = lines[first_start:checkout_end]
     pull_refs = re.findall(r"refs/remotes/pull/([0-9]+)/merge", "\n".join(checkout_lines))
-    if len(pull_refs) < 2 or any(reference != str(reviewed_pr) for reference in pull_refs):
-        raise ValueError("historical fmt checkout did not resolve the exact reviewed PR merge ref")
+    if len(pull_refs) < 2 or any(reference != pull_refs[0] for reference in pull_refs):
+        raise ValueError("historical fmt checkout did not resolve one exact PR merge ref")
+    pull_number = int(pull_refs[0])
+    if pull_number < 1:
+        raise ValueError("historical fmt checkout PR number was invalid")
     checkout_commands = [line for line in checkout_lines if re.search(r"\bgit checkout\b", line)]
     if len(checkout_commands) != 1 or not re.search(
-        rf"\bgit checkout\b.*refs/remotes/pull/{reviewed_pr}/merge\s*$",
+        rf"\bgit checkout\b.*refs/remotes/pull/{pull_number}/merge\s*$",
         checkout_commands[0],
     ):
         raise ValueError("historical fmt checkout command was ambiguous")
     fetch_commands = [line for line in checkout_lines if re.search(r"\bgit .*\bfetch\b", line)]
     if len(fetch_commands) != 1 or len(re.findall(
-        rf"refs/remotes/pull/{reviewed_pr}/merge", fetch_commands[0]
+        rf"refs/remotes/pull/{pull_number}/merge", fetch_commands[0]
     )) != 1:
         raise ValueError("historical fmt fetch did not identify one exact reviewed PR merge ref")
     log_indexes = [
@@ -181,7 +198,7 @@ def _checkout_merge_sha(text: str, reviewed_pr: int) -> str:
             break
     if resolved is None:
         raise ValueError("historical fmt checkout merge SHA was missing")
-    return resolved
+    return pull_number, resolved
 
 
 def _runner_setup_message(line: str) -> str | None:
