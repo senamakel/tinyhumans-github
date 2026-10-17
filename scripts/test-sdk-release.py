@@ -2,6 +2,7 @@
 from pathlib import Path
 import importlib.util
 import subprocess
+import tempfile
 import unittest
 
 import yaml
@@ -352,6 +353,61 @@ class ReviewedReleaseApiPaginationTests(unittest.TestCase):
         nodes = self.api.review_threads_for_pull(12)
         self.assertEqual([node["isResolved"] for node in nodes], [True, True, False])
         self.assertEqual(cursors, [None, "cursor-1"])
+
+    def test_bare_history_fetch_resolves_exact_tag_without_a_worktree(self):
+        with tempfile.TemporaryDirectory(prefix="sdk-reviewed-git-fixture-") as temporary:
+            repository = Path(temporary) / "source.git"
+            repository.mkdir()
+
+            def git(*args):
+                return subprocess.run(
+                    ["git", "-C", str(repository), *args],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+
+            git("init", "--quiet")
+            git("config", "user.name", "SDK Release Fixture")
+            git("config", "user.email", "sdk-fixture@example.invalid")
+            (repository / "source.txt").write_text("main\n")
+            git("add", "source.txt")
+            git("commit", "--quiet", "-m", "main base")
+            git("branch", "-M", "main")
+            main_sha = git("rev-parse", "HEAD")
+            git("checkout", "--quiet", "-b", "source")
+            (repository / "source.txt").write_text("epic\n")
+            git("commit", "--quiet", "-am", "reviewed PR head")
+            head_sha = git("rev-parse", "HEAD")
+            tree = git("rev-parse", "HEAD^{tree}")
+            merge_sha = git("commit-tree", tree, "-p", main_sha, "-p", head_sha, "-m", "PR merge")
+            git("tag", "-a", "v0.1.7", "-m", "v0.1.7", merge_sha)
+
+            history = self.verify.BareHistory(
+                "tinyhumansai/tinybus",
+                "v0.1.7",
+                merge_sha,
+                main_sha,
+                remote_url=str(repository),
+            )
+            try:
+                self.assertEqual(history.tag_sha, merge_sha)
+                self.assertEqual(history.main_sha, main_sha)
+                self.assertEqual(history.parents_of(merge_sha), (main_sha, head_sha))
+                self.assertTrue(history.is_ancestor_of(main_sha, main_sha))
+                self.assertFalse(history.is_ancestor_of(merge_sha, main_sha))
+                self.assertEqual(
+                    subprocess.run(
+                        ["git", "--git-dir", str(history.git_dir), "rev-parse", "--is-bare-repository"],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                    ).stdout.strip(),
+                    "true",
+                )
+                self.assertFalse((history.git_dir / "worktrees").exists())
+            finally:
+                history.close()
 
 
 def reviewed_release_fixture(verifier):

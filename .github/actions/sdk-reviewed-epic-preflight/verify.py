@@ -170,11 +170,12 @@ class GitHubApi:
 class BareHistory:
     """Fetch Git objects without creating a working tree or executing source."""
 
-    def __init__(self, repository: str, tag: str, tag_sha: str, main_sha: str):
+    def __init__(self, repository: str, tag: str, tag_sha: str, main_sha: str,
+                 remote_url: str | None = None):
         self._temporary = tempfile.TemporaryDirectory(prefix="sdk-reviewed-history-")
         self.git_dir = Path(self._temporary.name) / "history.git"
         self._run(["git", "init", "--bare", str(self.git_dir)])
-        remote = f"https://github.com/{repository}.git"
+        remote = remote_url or f"https://github.com/{repository}.git"
         tag_ref = f"refs/tags/{tag}:refs/tags/{tag}"
         main_ref = "refs/heads/main:refs/remotes/canonical/main"
         self._run([
