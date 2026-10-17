@@ -930,24 +930,33 @@ Path({str(capture)!r}).write_text("\\n".join(args))
 import tarfile
 import zipfile
 # Model the target TinyBus checksum CLI: module archives must contain one native library.
+libraries = []
 for path in paths:
     asset = Path(path)
     if asset.name.endswith(".tar.gz"):
         with tarfile.open(asset, "r:gz") as archive:
-            members = archive.getnames()
+            members = [entry.name for entry in archive.getmembers()]
+            native = [name for name in members if name.endswith((".so", ".dylib", ".dll"))]
+            library_bytes = archive.extractfile(native[0]).read() if len(native) == 1 else None
     elif asset.name.endswith(".zip"):
         with zipfile.ZipFile(asset) as archive:
             members = archive.namelist()
+            native = [name for name in members if name.endswith((".so", ".dylib", ".dll"))]
+            library_bytes = archive.read(native[0]) if len(native) == 1 else None
     else:
         members = []
     if asset.name.endswith((".tar.gz", ".zip")) and not any(name.endswith((".so", ".dylib", ".dll")) for name in members):
         print(f"{{asset.name}}: release archive contains no platform module", file=sys.stderr)
         raise SystemExit(1)
+    if asset.name.endswith((".tar.gz", ".zip")):
+        libraries.append((asset.name, hashlib.sha256(library_bytes).hexdigest()))
 lines = ["[sha256]"]
 for path in paths:
     asset = Path(path)
     digest = hashlib.sha256(asset.read_bytes()).hexdigest()
     lines.append(f'"{{asset.name}}" = "{{digest}}"')
+lines.extend(["", "[library_sha256]"])
+lines.extend(f'"{{name}}" = "{{digest}}"' for name, digest in libraries)
 output.write_text("\\n".join(lines) + "\\n")
 ''')
             cargo.chmod(0o755)
