@@ -370,6 +370,8 @@ def verify_tag_binding(api, tag: str, expected_sha: str, package: str) -> None:
 def verify_reviewed_release(api, git_factory, repository: str, tag: str, version: str,
                             package: str, reviewed_pr: int) -> str:
     _validate_inputs(repository, tag, version, package, reviewed_pr)
+    if getattr(api, "repository", None) != repository:
+        raise VerificationError("GitHub API repository does not match the canonical module profile")
     tag_sha = api.tag_commit(tag)
     main_sha = api.main_sha()
     history = git_factory(repository, tag, tag_sha, main_sha)

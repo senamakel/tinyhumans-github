@@ -60,6 +60,23 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
             ["docs/specs/tinybus-module.md"],
         )
 
+    def test_tag_only_recheck_requires_same_canonical_profile_and_sha(self):
+        class Api:
+            repository = "tinyhumansai/tinyconnectors"
+            tag_sha = "a" * 40
+
+            def tag_commit(self, tag):
+                self.asserted_tag = tag
+                return self.tag_sha
+
+        api = Api()
+        VERIFY.verify_tag_binding(api, "v1.2.3", "a" * 40, "tinyconnectors")
+        with self.assertRaisesRegex(VERIFY.VerificationError, "outside the reviewed allowlist"):
+            VERIFY.verify_tag_binding(api, "v1.2.3", "a" * 40, "tinybox-module")
+        api.tag_sha = "b" * 40
+        with self.assertRaisesRegex(VERIFY.VerificationError, "no longer resolves"):
+            VERIFY.verify_tag_binding(api, "v1.2.3", "a" * 40, "tinyconnectors")
+
     def test_each_allowed_repository_accepts_the_complete_reviewed_merge_history(self):
         for repository, package in VERIFY.MODULE_PACKAGES.items():
             with self.subTest(repository=repository):
@@ -100,6 +117,33 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                         package, 75,
                     )
 
+    def test_canonical_ci_event_repository_base_and_reusable_workflow_are_bound(self):
+        repository = "tinyhumansai/tinyconnectors"
+        package = VERIFY.MODULE_PACKAGES[repository]
+        for mutate, message in (
+            (lambda association: association["base"]["repo"].update(full_name="senamakel/tinyconnectors"),
+             "repository binding did not match"),
+            (lambda association: association["base"].update(ref="main"),
+             "base or head binding did not match"),
+        ):
+            fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+            run = fake.api.workflow_runs[fake.heads[75]][0]
+            mutate(run["pull_requests"][0])
+            with self.subTest(expected=message):
+                with self.assertRaisesRegex(VERIFY.VerificationError, message):
+                    VERIFY.verify_reviewed_release(
+                        fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7",
+                        package, 75,
+                    )
+
+        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+        run = fake.api.workflow_runs[fake.heads[75]][0]
+        run["referenced_workflows"][0]["sha"] = "0" * 40
+        with self.assertRaisesRegex(VERIFY.VerificationError, "workflow pin was not trusted"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            )
+
     def test_wrong_epic_base_and_false_merge_association_fail_closed(self):
         repository = "tinyhumansai/tinyconnectors"
         package = VERIFY.MODULE_PACKAGES[repository]
@@ -125,6 +169,35 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         run = fake.api.workflow_runs[fake.heads[75]][0]
         fake.api.workflow_jobs[(run["id"], run["run_attempt"])][1]["conclusion"] = "failure"
         with self.assertRaisesRegex(VERIFY.VerificationError, "canonical CI job is not successful"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            )
+
+        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+        fake.api.reviews[75] = [{
+            "user": {"login": "reviewer"}, "state": "CHANGES_REQUESTED",
+            "commit_id": fake.heads[75], "submitted_at": "2026-10-17T12:00:00Z", "id": 750,
+        }]
+        with self.assertRaisesRegex(VERIFY.VerificationError, "effective changes-requested"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            )
+
+    def test_stale_workflow_attempt_without_required_jobs_fails_closed(self):
+        repository = "tinyhumansai/tinybox"
+        package = VERIFY.MODULE_PACKAGES[repository]
+        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+        fake.api.workflow_runs[fake.heads[75]][0]["run_attempt"] = 2
+        original_jobs = fake.api.jobs_for_workflow_run
+
+        def current_attempt_jobs(run_id, attempt):
+            try:
+                return original_jobs(run_id, attempt)
+            except KeyError:
+                return []
+
+        fake.api.jobs_for_workflow_run = current_attempt_jobs
+        with self.assertRaisesRegex(VERIFY.VerificationError, "fmt job"):
             VERIFY.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
             )
