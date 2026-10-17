@@ -16,6 +16,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from historical_ci import verify_ci_merge_provenance
+from historical_ci import read_ci_checkout_proof
 
 
 CANONICAL_REPO = "tinyhumansai/tinybus"
@@ -28,6 +29,7 @@ MAX_EPIC_MERGES = 64
 MAX_REST_PAGES = 100
 MAX_GRAPHQL_PAGES = 100
 MAX_TAG_DEPTH = 5
+MAX_CI_PROVENANCE_RUNS = 64
 SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$")
 SHA = re.compile(r"^[0-9a-f]{40}$")
 REQUIRED_CHECKS = (
@@ -245,16 +247,22 @@ class GitHubApi:
         except (urllib.error.URLError, TimeoutError, OSError) as error:
             raise VerificationError("canonical fmt job logs could not be downloaded") from error
 
-    def commit_parents(self, commit: str) -> tuple[str, ...]:
+    def commit_details(self, commit: str) -> dict:
         commit = _sha(commit, "historical CI checkout")
         response = self._request(f"repos/{self.repository}/git/commits/{commit}")
         parents = response.get("parents") if isinstance(response, dict) else None
+        tree = response.get("tree") if isinstance(response, dict) else None
         if not isinstance(parents, list) or len(parents) != 2:
             raise VerificationError("historical CI merge commit did not have two parents")
         try:
-            return tuple(_sha(parent["sha"], "historical merge parent") for parent in parents)
+            tree_sha = _sha(tree["sha"], "historical merge tree")
+            parent_shas = tuple(_sha(parent["sha"], "historical merge parent") for parent in parents)
         except (KeyError, TypeError) as error:
-            raise VerificationError("historical CI merge parents were malformed") from error
+            raise VerificationError("historical CI merge tree or parents were malformed") from error
+        return {"tree_sha": tree_sha, "parents": parent_shas}
+
+    def commit_parents(self, commit: str) -> tuple[str, ...]:
+        return self.commit_details(commit)["parents"]
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
@@ -509,6 +517,8 @@ def _verify_required_checks(api, pull: dict) -> None:
             if type(number) is not int or number < 1:
                 raise VerificationError("canonical CI workflow run has a malformed pull request association")
             associated_numbers.append(number)
+        if len(set(associated_numbers)) != len(associated_numbers):
+            raise VerificationError("canonical CI workflow run has duplicate pull request associations")
         if pull["number"] in associated_numbers:
             associated_runs.append(run)
             associated_pull_by_run[run["id"]] = next(
@@ -517,19 +527,46 @@ def _verify_required_checks(api, pull: dict) -> None:
     canonical_runs = associated_runs + empty_association_runs
     if not canonical_runs:
         raise VerificationError("canonical CI workflow run could not be proven for the exact pull request")
-    workflow_run = max(
-        canonical_runs,
-        key=lambda run: (run["run_number"], run["run_attempt"], run["id"]),
-    )
+    if len(canonical_runs) > MAX_CI_PROVENANCE_RUNS:
+        raise VerificationError("canonical CI provenance candidates exceeded their bound")
+
+    selected_jobs = None
+    checkout_proof = None
+    workflow_run = None
+    workflow_association = None
+    canonical_runs.sort(key=lambda run: (run["run_number"], run["run_attempt"], run["id"]), reverse=True)
+    for candidate in canonical_runs:
+        association_list = candidate["pull_requests"]
+        if association_list:
+            workflow_run = candidate
+            workflow_association = associated_pull_by_run[candidate["id"]]
+            break
+
+        jobs = api.jobs_for_workflow_run(candidate["id"], candidate["run_attempt"])
+        fmt_job = _fmt_job_for_run(jobs, candidate, pull)
+        try:
+            proof = read_ci_checkout_proof(api, candidate, fmt_job)
+        except ValueError as error:
+            raise VerificationError(str(error)) from error
+        if proof["pull_number"] != pull["number"]:
+            # The pinned runner checkout proves this empty-association run belongs to another PR.
+            continue
+        workflow_run = candidate
+        workflow_association = None
+        selected_jobs = jobs
+        checkout_proof = proof
+        break
+
+    if workflow_run is None:
+        raise VerificationError("canonical CI workflow run could not be proven for the exact pull request")
     if workflow_run.get("status") != "completed" or workflow_run.get("conclusion") != "success":
         raise VerificationError("latest canonical CI workflow run is not successful")
 
     historical_empty_association = workflow_run.get("pull_requests") == []
-    workflow_association = None if historical_empty_association else associated_pull_by_run.get(workflow_run["id"])
     if not historical_empty_association and workflow_association is None:
         raise VerificationError("canonical CI run association for the exact pull request was lost")
 
-    jobs = api.jobs_for_workflow_run(workflow_run["id"], workflow_run["run_attempt"])
+    jobs = selected_jobs or api.jobs_for_workflow_run(workflow_run["id"], workflow_run["run_attempt"])
     job_by_name = {}
     for job in jobs:
         name = job.get("name") if isinstance(job, dict) else None
@@ -569,9 +606,28 @@ def _verify_required_checks(api, pull: dict) -> None:
             raise VerificationError(f"trusted CI check is not successful: {required}")
         if required == REQUIRED_CHECKS[0]:
             try:
-                verify_ci_merge_provenance(api, workflow_run, job, pull, workflow_association)
+                verify_ci_merge_provenance(
+                    api, workflow_run, job, pull, workflow_association, checkout_proof
+                )
             except ValueError as error:
                 raise VerificationError(str(error)) from error
+
+
+def _fmt_job_for_run(jobs: list, workflow_run: dict, pull: dict) -> dict:
+    matches = [job for job in jobs if isinstance(job, dict) and job.get("name") == REQUIRED_CHECKS[0]]
+    if len(matches) != 1:
+        raise VerificationError("empty-association run did not contain one canonical fmt job")
+    job = matches[0]
+    if (
+        type(job.get("id")) is not int
+        or job["id"] < 1
+        or job.get("run_id") != workflow_run["id"]
+        or job.get("run_attempt") != workflow_run["run_attempt"]
+        or job.get("head_sha") != pull["head_sha"]
+        or job.get("status") != "completed"
+    ):
+        raise VerificationError("empty-association fmt job was incomplete or mismatched")
+    return job
 
 
 def _check_run_id(value) -> int:
