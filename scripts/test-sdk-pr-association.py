@@ -126,6 +126,12 @@ class WorkflowPullAssociationTests(unittest.TestCase):
         with self.assertRaisesRegex(self.verify.verify.VerificationError, "job logs|job log"):
             self.run_verification()
 
+    def test_older_unknown_empty_run_does_not_override_a_newer_direct_pr_run(self):
+        fake = base_tests.reviewed_release_fixture(self.verify.verify)
+        self._append_empty_run(fake, 75, pr_number=999, run_number=100, logs=False)
+        self.fake = fake
+        self.assertEqual(self.run_verification(), fake.tag_sha)
+
     def _append_empty_run(self, fake, source_pr, *, pr_number, run_number, status="completed",
                           conclusion="success", logs=True):
         head = fake.heads[source_pr]
