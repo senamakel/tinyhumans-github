@@ -16,6 +16,7 @@ import yaml
 
 ROOT = Path(__file__).parents[1]
 BASELINE_SOURCE_COMMIT = "0cafb7aada1e706fa237948c52decd9b753b111c"
+# Git blob IDs recorded from BASELINE_SOURCE_COMMIT; these remain checkable without remote refs.
 UNCHANGED_PATH_BLOBS = {
     ".github/workflows/module-release.yml": "6e46ec0415347e8c1ac3a1cbf2fe9a7b806cca7d",
     ".github/workflows/sdk-release.yml": "1db85a6cbc003067983c4f2bf2a86b4935f6119a",
@@ -302,7 +303,6 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
             api.rest_pages("repos/tinyhumansai/tinyconnectors/pulls")
 
     def test_existing_sdk_and_module_release_sources_match_reviewed_baseline_blobs(self):
-        self.assertEqual(BASELINE_SOURCE_COMMIT, "0cafb7aada1e706fa237948c52decd9b753b111c")
         for path, expected_blob in UNCHANGED_PATH_BLOBS.items():
             result = subprocess.run(
                 ["git", "rev-parse", f"HEAD:{path}"],
