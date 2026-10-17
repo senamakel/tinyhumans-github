@@ -143,6 +143,10 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
         })
         root = Path(__file__).parents[1]
         action_tree = ".github/actions/sdk-reviewed-epic-preflight"
+        action = yaml.load((root / action_tree / "action.yml").read_text(), Loader=yaml.BaseLoader)
+        self.assertEqual(action["runs"]["using"], "composite")
+        self.assertTrue(action["runs"]["steps"][0]["run"].endswith("$GITHUB_ACTION_PATH/verify.py\""))
+        self.assertEqual(action["inputs"]["token"]["required"], "true")
         pinned = subprocess.run(
             ["git", "rev-parse", f"{action_sha}:{action_tree}"],
             cwd=root,
