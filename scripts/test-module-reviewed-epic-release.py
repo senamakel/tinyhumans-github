@@ -829,7 +829,9 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
             fake_bin.mkdir()
             capture = Path(root) / "cargo-args"
             cargo = fake_bin / "cargo"
-            cargo.write_text("#!/bin/sh\\nprintf '%s\\n' \\\"$@\\\" > \\\"$CAPTURE_CARGO_ARGS\\\"\\n")
+            cargo.write_text('''#!/bin/sh
+printf '%s\\n' "$@" > "$CAPTURE_CARGO_ARGS"
+''')
             cargo.chmod(0o755)
             environment = dict(os.environ, MODULE_ASSET="tinydocs-module", MODULE_VERSION="0.2.4",
                                PATH=f"{fake_bin}:{os.environ['PATH']}", CAPTURE_CARGO_ARGS=str(capture))
