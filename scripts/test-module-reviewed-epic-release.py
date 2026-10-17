@@ -895,7 +895,7 @@ output.write_text("\\n".join(lines) + "\\n")
                 manifest,
             )
             self.assertIn(
-                f'"tinybus-source-0123456789ab.tar.gz" = "{hashlib.sha256(b"pinned source").hexdigest()}"',
+                f'"tinybus-source-0123456789ab.tar.gz" = "{hashlib.sha256(source_archive.read_bytes()).hexdigest()}"',
                 manifest,
             )
             for host in hosts:
