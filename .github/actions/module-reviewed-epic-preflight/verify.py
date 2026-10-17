@@ -21,13 +21,16 @@ from historical_ci import read_ci_checkout_proof
 
 MODULE_PROFILES = {
     "tinyhumansai/tinyconnectors": {
-        "package": "tinyconnectors", "asset": "tinyconnectors", "workflow_id": 345777017,
+        "package": "tinyconnectors", "asset": "tinyconnectors", "manifest": "Cargo.toml",
+        "extra_files": [], "workflow_id": 345777017,
     },
     "tinyhumansai/tinybox": {
-        "package": "tinybox-module", "asset": "tinybox", "workflow_id": 334144667,
+        "package": "tinybox-module", "asset": "tinybox", "manifest": "Cargo.toml",
+        "extra_files": [], "workflow_id": 334144667,
     },
     "tinyhumansai/tinyjuice": {
-        "package": "tinyjuice-module", "asset": "tinyjuice", "workflow_id": 307270985,
+        "package": "tinyjuice-module", "asset": "tinyjuice", "manifest": "Cargo.toml",
+        "extra_files": ["docs/specs/tinybus-module.md"], "workflow_id": 307270985,
     },
 }
 MODULE_PACKAGES = {repo: profile["package"] for repo, profile in MODULE_PROFILES.items()}
@@ -698,6 +701,8 @@ def main() -> int:
         output.write(f"source-sha={source_sha}\n")
         output.write(f"module-package={profile['package']}\n")
         output.write(f"module-asset={profile['asset']}\n")
+        output.write(f"module-manifest={profile['manifest']}\n")
+        output.write(f"extra-packaged-files={json.dumps(profile['extra_files'], separators=(',', ':'))}\n")
     print(f"verified reviewed module source {source_sha}")
     return 0
 
