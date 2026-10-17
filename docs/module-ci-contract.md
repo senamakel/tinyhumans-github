@@ -93,6 +93,25 @@ shared sdk-release.yml to publish a source archive and checksum.toml. Native
 module archives and module-load verification are not applicable to that SDK;
 its three-platform loader fixture tests remain required CI checks.
 
+For the OpenHuman 8056 migration only, TinyBus may temporarily call
+`sdk-reviewed-epic-release.yml` with the exact `epic/8056-modules-wiring`
+base. Its read-only preflight follows the tag's first-parent chain back to a
+commit already reachable from canonical `main`. Every intervening commit must
+be a two-parent merge commit for a merged PR into that exact canonical epic;
+the second parent must match the PR's final head. Each PR must have the 13
+trusted `module-ci` checks successful, no effective changes-requested review,
+and no unresolved review threads. Checks must link to jobs from the latest
+attempt of the canonical `.github/workflows/ci.yml` pull-request run for that
+exact head SHA, fork, and branch. The `main` ancestry anchor must report branch
+protection enabled. It rejects direct pushes, non-PR merges, missing API
+evidence, and incomplete pagination. The preflight fetches Git objects into a
+bare repository and never checks out or executes tagged source.
+Packaging uses the exact SHA it verified, and publishing rechecks that the tag
+still resolves to that SHA. Ordinary SDK callers keep using `sdk-release.yml`
+and its main-ancestor gate. Remove the temporary caller/path before the epic's
+final rollup; after the epic is merged to main, release from the main-based
+entrypoint.
+
 ## Drift detection
 
 The shared repository's CI runs offline regression tests on every PR. On every

@@ -1,0 +1,44 @@
+name: Verify reviewed TinyBus epic release
+description: Verify the exact TinyBus epic PR chain and its CI before packaging a source release.
+inputs:
+  token:
+    description: Read-only GITHUB_TOKEN for the TinyBus PR and check APIs.
+    required: true
+  tag:
+    description: Existing TinyBus version tag.
+    required: true
+  version:
+    description: Version without the leading v.
+    required: false
+  package:
+    description: Cargo SDK package name.
+    required: false
+  reviewed-pr:
+    description: PR whose exact merge commit the release tag names.
+    required: false
+  mode:
+    description: reviewed validates the PR chain; tag-only rechecks the tag binding.
+    required: false
+    default: reviewed
+  expected-sha:
+    description: Previously verified tag commit to require in tag-only mode.
+    required: false
+outputs:
+  source-sha:
+    description: Exact merge commit validated for the SDK source release.
+    value: ${{ steps.verify.outputs.source-sha }}
+runs:
+  using: composite
+  steps:
+    - id: verify
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        TAG: ${{ inputs.tag }}
+        VERSION: ${{ inputs.version }}
+        PACKAGE: ${{ inputs.package }}
+        REVIEWED_PR: ${{ inputs.reviewed-pr }}
+        MODE: ${{ inputs.mode }}
+        EXPECTED_SHA: ${{ inputs.expected-sha }}
+      run: python3 "$GITHUB_ACTION_PATH/verify.py"
