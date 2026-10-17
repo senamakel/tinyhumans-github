@@ -98,7 +98,7 @@ def _checkout_merge_sha(text: str, reviewed_pr: int) -> str:
     checkout_end = action_starts[1] if len(action_starts) > 1 else len(lines)
     checkout_lines = lines[first_start:checkout_end]
     pull_refs = re.findall(r"refs/remotes/pull/([0-9]+)/merge", "\n".join(checkout_lines))
-    if pull_refs != [str(reviewed_pr), str(reviewed_pr)]:
+    if len(pull_refs) < 2 or any(reference != str(reviewed_pr) for reference in pull_refs):
         raise ValueError("historical fmt checkout did not resolve the exact reviewed PR merge ref")
     checkout_commands = [line for line in checkout_lines if re.search(r"\bgit checkout\b", line)]
     if len(checkout_commands) != 1 or not re.search(
