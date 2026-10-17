@@ -476,13 +476,16 @@ class ReviewedReleaseApiPaginationTests(unittest.TestCase):
         self.assertEqual(cursors, [None, "cursor-1"])
 
     def test_graphql_pagination_rejects_missing_has_next_page(self):
-        self.api._request = lambda *_args, **_kwargs: {
-            "data": {"repository": {"pullRequest": {
-                "reviewThreads": {"nodes": [], "pageInfo": {}}
-            }}}
-        }
-        with self.assertRaisesRegex(self.verify.VerificationError, "pageInfo|pagination"):
-            self.api.review_threads_for_pull(12)
+        for page_info in ({}, {"hasNextPage": "false"}, {"hasNextPage": None}):
+            self.api._request = lambda *_args, info=page_info, **_kwargs: {
+                "data": {"repository": {"pullRequest": {
+                    "reviewThreads": {"nodes": [], "pageInfo": info}
+                }}}
+            }
+            with self.subTest(page_info=page_info), self.assertRaisesRegex(
+                self.verify.VerificationError, "pageInfo|pagination"
+            ):
+                self.api.review_threads_for_pull(12)
 
     def test_main_branch_must_report_protection_enabled(self):
         for response in (

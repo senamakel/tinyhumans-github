@@ -353,11 +353,17 @@ def _validate_pull(pull: dict, repository: str, merge_sha: str) -> dict:
     number = pull.get("number")
     if not isinstance(number, int) or number < 1:
         raise VerificationError("GitHub pull request number was invalid")
+    head_repository = (head.get("repo") or {}).get("full_name")
+    head_ref = head.get("ref")
+    if not isinstance(head_repository, str) or not head_repository:
+        raise VerificationError("pull request head repository was missing")
+    if not isinstance(head_ref, str) or not head_ref:
+        raise VerificationError("pull request head branch was missing")
     return {
         "number": number,
         "head_sha": _sha(head.get("sha"), "pull request head"),
-        "head_ref": head.get("ref"),
-        "head_repository": (head.get("repo") or {}).get("full_name"),
+        "head_ref": head_ref,
+        "head_repository": head_repository,
         "author": author.get("login"),
     }
 
@@ -391,17 +397,19 @@ def _verify_required_checks(api, pull: dict) -> None:
     canonical_runs = [
         run for run in workflow_runs
         if isinstance(run, dict)
-        and isinstance(run.get("path"), str)
-        and run["path"].split("@", 1)[0] == CI_WORKFLOW_PATH
+        and run.get("path") == CI_WORKFLOW_PATH
         and run.get("workflow_id") == CI_WORKFLOW_ID
         and run.get("event") == "pull_request"
         and run.get("head_sha") == pull["head_sha"]
         and run.get("head_branch") == pull["head_ref"]
         and (run.get("repository") or {}).get("full_name") == CANONICAL_REPO
         and (run.get("head_repository") or {}).get("full_name") == pull["head_repository"]
-        and isinstance(run.get("id"), int)
-        and isinstance(run.get("run_number"), int)
-        and isinstance(run.get("run_attempt"), int)
+        and type(run.get("id")) is int
+        and run["id"] > 0
+        and type(run.get("run_number")) is int
+        and run["run_number"] > 0
+        and type(run.get("run_attempt")) is int
+        and run["run_attempt"] > 0
         and run.get("check_suite_id") is not None
     ]
     if not canonical_runs:
