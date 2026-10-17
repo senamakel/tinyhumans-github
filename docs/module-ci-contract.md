@@ -171,9 +171,11 @@ package and a source archive of that SHA's pinned `vendor/tinybus` gitlink.
 Assembly accepts exactly these two top-level files, adds them to the same
 release-assets artifact as the module archives and checksum manifest, and
 adds both filenames and SHA-256 digests to the same manifest as the 17 module
-archives. `checksum.toml` is an additional release asset; it is not included
-in its own checksum. Release retries compare the complete asset set and every
-asset's contents.
+archives. Only the module archives go through TinyBus's module-checksum command;
+the workflow appends the two validated source-file digests using that command's
+`[sha256]` TOML format. `checksum.toml` is an additional release asset and is
+not included in its own checksum. Release retries compare the complete asset
+set and every asset's contents.
 
 The TinyVoice profile fixes its metadata manifest at
 `crates/tinyvoice-module/Cargo.toml` and its Ubuntu native dependencies at
