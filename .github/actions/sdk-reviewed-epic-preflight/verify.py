@@ -388,7 +388,8 @@ def _verify_required_checks(api, pull: dict) -> None:
     canonical_runs = [
         run for run in workflow_runs
         if isinstance(run, dict)
-        and run.get("path", "").split("@", 1)[0] == ".github/workflows/ci.yml"
+        and isinstance(run.get("path"), str)
+        and run["path"].split("@", 1)[0] == ".github/workflows/ci.yml"
         and run.get("event") == "pull_request"
         and run.get("head_sha") == pull["head_sha"]
         and (run.get("repository") or {}).get("full_name") == CANONICAL_REPO

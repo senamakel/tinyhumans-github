@@ -349,6 +349,22 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
                 "0.1.7", "tinybus", 75,
             )
 
+    def test_failed_latest_attempt_cannot_be_masked_by_earlier_green_attempt(self):
+        fake = reviewed_release_fixture(self.verify)
+        head = fake.heads[72]
+        first_attempt = fake.workflow_runs[head][0]
+        latest_attempt = dict(first_attempt, run_attempt=2)
+        fake.workflow_runs[head].append(latest_attempt)
+        jobs = [dict(job, run_attempt=2) for job in
+                fake.workflow_jobs[(first_attempt["id"], first_attempt["run_attempt"])]]
+        jobs[0]["conclusion"] = "failure"
+        fake.workflow_jobs[(first_attempt["id"], 2)] = jobs
+        with self.assertRaisesRegex(self.verify.VerificationError, "not successful"):
+            self.verify.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
+                "0.1.7", "tinybus", 75,
+            )
+
         fake = reviewed_release_fixture(self.verify)
         fake.checks[fake.heads[72]][0]["conclusion"] = "failure"
         with self.assertRaisesRegex(self.verify.VerificationError, "not successful"):
@@ -436,12 +452,16 @@ class ReviewedReleaseApiPaginationTests(unittest.TestCase):
             self.api.review_threads_for_pull(12)
 
     def test_main_branch_must_report_protection_enabled(self):
-        self.api._request = lambda *_args, **_kwargs: {
-            "protected": False,
-            "commit": {"sha": sha(1)},
-        }
-        with self.assertRaisesRegex(self.verify.VerificationError, "protected"):
-            self.api.main_sha()
+        for response in (
+            {"protected": False, "commit": {"sha": sha(1)}},
+            {"commit": {"sha": sha(1)}},
+            {"protected": None, "commit": {"sha": sha(1)}},
+        ):
+            self.api._request = lambda *_args, payload=response, **_kwargs: payload
+            with self.subTest(response=response), self.assertRaisesRegex(
+                self.verify.VerificationError, "protection"
+            ):
+                self.api.main_sha()
 
     def test_bare_history_fetch_resolves_exact_tag_without_a_worktree(self):
         with tempfile.TemporaryDirectory(prefix="sdk-reviewed-git-fixture-") as temporary:
