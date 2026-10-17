@@ -390,7 +390,7 @@ def reviewed_release_fixture(verifier):
     class Git:
         def __init__(self, parents):
             self.parents = parents
-            self.tag_sha = sha(4)
+            self.tag_sha = sha(5)
             self.main_sha = sha(1)
 
         def parents_of(self, commit):
