@@ -142,18 +142,34 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
             f"tinyhumansai/.github/.github/actions/sdk-reviewed-epic-preflight@{action_sha}"
         })
         root = Path(__file__).parents[1]
-        for relative in (
-            ".github/actions/sdk-reviewed-epic-preflight/action.yml",
-            ".github/actions/sdk-reviewed-epic-preflight/verify.py",
-        ):
-            pinned = subprocess.run(
-                ["git", "show", f"{action_sha}:{relative}"],
-                cwd=root,
-                capture_output=True,
-                check=False,
-            )
-            self.assertEqual(pinned.returncode, 0, f"action pin does not contain {relative}")
-            self.assertEqual(pinned.stdout, (root / relative).read_bytes(), relative)
+        action_tree = ".github/actions/sdk-reviewed-epic-preflight"
+        pinned = subprocess.run(
+            ["git", "rev-parse", f"{action_sha}:{action_tree}"],
+            cwd=root,
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        checked_in = subprocess.run(
+            ["git", "rev-parse", f"HEAD:{action_tree}"],
+            cwd=root,
+            capture_output=True,
+            check=False,
+            text=True,
+        )
+        self.assertEqual(pinned.returncode, 0, "pinned action tree is missing")
+        self.assertEqual(checked_in.returncode, 0, "checked-in action tree is missing")
+        self.assertEqual(pinned.stdout.strip(), checked_in.stdout.strip())
+
+    def test_action_checks_match_all_required_main_ruleset_contexts(self):
+        root = Path(__file__).parents[1]
+        path = root / "scripts/check-module-drift.py"
+        spec = importlib.util.spec_from_file_location("sdk_release_module_drift", path)
+        drift = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(drift)
+        self.assertEqual(len(self.verify.REQUIRED_CHECKS), 13)
+        self.assertEqual(self.verify.REQUIRED_CHECKS, drift.CHECKS)
+        self.assertEqual(self.verify.CHECK_APP_ID, 15368)
 
     def test_legacy_entrypoint_permissions_and_package_publish_logic_are_unchanged(self):
         self.assertEqual(
