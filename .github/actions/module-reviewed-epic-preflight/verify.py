@@ -1,4 +1,4 @@
-"""Fail-closed verification for TinyBus's temporary reviewed-epic SDK release."""
+"""Fail-closed verification for the temporary reviewed module release path."""
 
 from __future__ import annotations
 
@@ -19,11 +19,21 @@ from historical_ci import verify_ci_merge_provenance
 from historical_ci import read_ci_checkout_proof
 
 
-CANONICAL_REPO = "tinyhumansai/tinybus"
+MODULE_PROFILES = {
+    "tinyhumansai/tinyconnectors": {
+        "package": "tinyconnectors", "asset": "tinyconnectors", "workflow_id": 345777017,
+    },
+    "tinyhumansai/tinybox": {
+        "package": "tinybox-module", "asset": "tinybox", "workflow_id": 334144667,
+    },
+    "tinyhumansai/tinyjuice": {
+        "package": "tinyjuice-module", "asset": "tinyjuice", "workflow_id": 307270985,
+    },
+}
+MODULE_PACKAGES = {repo: profile["package"] for repo, profile in MODULE_PROFILES.items()}
+CI_WORKFLOW_IDS = {repo: profile["workflow_id"] for repo, profile in MODULE_PROFILES.items()}
 EPIC_BASE = "epic/8056-modules-wiring"
-SDK_PACKAGE = "tinybus"
 CHECK_APP_ID = 15368
-CI_WORKFLOW_ID = 330089283
 CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
 MAX_EPIC_MERGES = 64
 MAX_REST_PAGES = 100
@@ -277,7 +287,7 @@ class BareHistory:
 
     def __init__(self, repository: str, tag: str, tag_sha: str, main_sha: str,
                  remote_url: str | None = None):
-        self._temporary = tempfile.TemporaryDirectory(prefix="sdk-reviewed-history-")
+        self._temporary = tempfile.TemporaryDirectory(prefix="module-reviewed-history-")
         self.git_dir = Path(self._temporary.name) / "history.git"
         self._run(["git", "init", "--bare", str(self.git_dir)])
         remote = remote_url or f"https://github.com/{repository}.git"
@@ -344,13 +354,14 @@ class BareHistory:
         self._temporary.cleanup()
 
 
-def verify_tag_binding(api, tag: str, expected_sha: str) -> None:
-    if api.repository != CANONICAL_REPO or not tag.startswith("v") or not SEMVER.fullmatch(tag[1:]):
-        raise VerificationError("release tag binding is restricted to canonical TinyBus semver tags")
+def verify_tag_binding(api, tag: str, expected_sha: str, package: str) -> None:
+    _validate_module(api.repository, package)
+    if not tag.startswith("v") or not SEMVER.fullmatch(tag[1:]):
+        raise VerificationError("release tag must be a canonical module semver tag")
     expected_sha = _sha(expected_sha, "preflight source")
     actual_sha = api.tag_commit(tag)
     if actual_sha != expected_sha:
-        raise VerificationError("release tag no longer resolves to the preflight source SHA")
+        raise VerificationError("release tag no longer resolves to the verified module source SHA")
 
 
 def verify_reviewed_release(api, git_factory, repository: str, tag: str, version: str,
@@ -411,10 +422,7 @@ def verify_reviewed_release(api, git_factory, repository: str, tag: str, version
 
 
 def _validate_inputs(repository: str, tag: str, version: str, package: str, reviewed_pr: int):
-    if repository != CANONICAL_REPO:
-        raise VerificationError("reviewed-epic SDK release is restricted to canonical TinyBus")
-    if package != SDK_PACKAGE:
-        raise VerificationError("reviewed-epic SDK release is restricted to the tinybus package")
+    _validate_module(repository, package)
     if not SEMVER.fullmatch(version) or tag != f"v{version}":
         raise VerificationError("release tag and SDK version must be matching semver values")
     if not isinstance(reviewed_pr, int) or reviewed_pr < 1:
@@ -485,11 +493,11 @@ def _verify_required_checks(api, pull: dict) -> None:
         run for run in workflow_runs
         if isinstance(run, dict)
         and run.get("path") == CI_WORKFLOW_PATH
-        and run.get("workflow_id") == CI_WORKFLOW_ID
+        and run.get("workflow_id") == CI_WORKFLOW_IDS[api.repository]
         and run.get("event") == "pull_request"
         and run.get("head_sha") == pull["head_sha"]
         and run.get("head_branch") == pull["head_ref"]
-        and (run.get("repository") or {}).get("full_name") == CANONICAL_REPO
+        and (run.get("repository") or {}).get("full_name") == api.repository
         and (run.get("head_repository") or {}).get("full_name") == pull["head_repository"]
         and type(run.get("id")) is int
         and run["id"] > 0
@@ -607,7 +615,8 @@ def _verify_required_checks(api, pull: dict) -> None:
         if required == REQUIRED_CHECKS[0]:
             try:
                 verify_ci_merge_provenance(
-                    api, workflow_run, job, pull, workflow_association, checkout_proof
+                    api, workflow_run, job, pull, workflow_association, checkout_proof,
+                    repository=api.repository, epic_base=EPIC_BASE,
                 )
             except ValueError as error:
                 raise VerificationError(str(error)) from error
@@ -630,16 +639,24 @@ def _fmt_job_for_run(jobs: list, workflow_run: dict, pull: dict) -> dict:
     return job
 
 
-def _check_run_id(value) -> int:
+def _check_run_id(value, repository: str) -> int:
     if not isinstance(value, str):
         raise VerificationError("canonical CI job did not identify its check run")
     match = re.fullmatch(
-        r"https://api\.github\.com/repos/tinyhumansai/tinybus/check-runs/([0-9]+)",
+        rf"https://api\.github\.com/repos/{re.escape(repository)}/check-runs/([0-9]+)",
         value,
     )
     if match is None:
         raise VerificationError("canonical CI job check-run URL was invalid")
     return int(match.group(1))
+
+
+def _validate_module(repository: str, package: str) -> dict:
+    """Resolve only an exact canonical repository and compiled-in package."""
+    profile = MODULE_PROFILES.get(repository)
+    if profile is None or profile["package"] != package:
+        raise VerificationError("repository and module package are outside the reviewed allowlist")
+    return profile
 
 
 def _sha(value, label: str) -> str:
