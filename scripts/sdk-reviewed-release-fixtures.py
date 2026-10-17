@@ -44,7 +44,7 @@ def reviewed_release_fixture(verifier):
             return self.workflow_jobs[(run_id, attempt)]
 
         def job_logs(self, job_id):
-            return self.logs[job_id]
+            return self.logs[job_id].encode()
 
         def commit_parents(self, commit):
             return self.parents_by_sha[commit]
