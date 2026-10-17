@@ -33,6 +33,12 @@ outputs:
   module-asset:
     description: Compiled-in public module asset stem for the canonical caller repository.
     value: ${{ steps.verify.outputs.module-asset }}
+  module-manifest:
+    description: Compiled-in Cargo manifest path for the canonical caller repository.
+    value: ${{ steps.verify.outputs.module-manifest }}
+  extra-packaged-files:
+    description: Compiled-in JSON array of extra package files for the canonical caller repository.
+    value: ${{ steps.verify.outputs.extra-packaged-files }}
 runs:
   using: composite
   steps:

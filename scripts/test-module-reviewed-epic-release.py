@@ -42,6 +42,14 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
             },
         )
         self.assertEqual(len(VERIFY.REQUIRED_CHECKS), 13)
+        self.assertEqual(
+            {repo: profile["manifest"] for repo, profile in VERIFY.MODULE_PROFILES.items()},
+            {repo: "Cargo.toml" for repo in VERIFY.MODULE_PROFILES},
+        )
+        self.assertEqual(
+            VERIFY.MODULE_PROFILES["tinyhumansai/tinyjuice"]["extra_files"],
+            ["docs/specs/tinybus-module.md"],
+        )
 
     def test_each_allowed_repository_accepts_the_complete_reviewed_merge_history(self):
         for repository, package in VERIFY.MODULE_PACKAGES.items():
@@ -106,6 +114,10 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         path = ROOT / ".github/workflows/module-reviewed-epic-release.yml"
         self.workflow = yaml.load(path.read_text(), Loader=yaml.BaseLoader)
 
+    def test_caller_cannot_choose_repository_profile_or_package_metadata(self):
+        inputs = self.workflow["on"]["workflow_call"]["inputs"]
+        self.assertEqual(set(inputs), {"tag", "version", "reviewed-pr"})
+
     def test_all_source_execution_jobs_require_preflight_and_use_verified_sha(self):
         jobs = self.workflow["jobs"]
         source_jobs = ("validate", "native", "distro", "assemble")
@@ -143,6 +155,8 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn("publish-crates-io", workflow)
         self.assertNotIn("CARGO_REGISTRY_TOKEN", workflow)
         self.assertNotIn("include-distros", workflow)
+        self.assertNotIn("extra-packaged-files", self.workflow["on"]["workflow_call"]["inputs"])
+        self.assertNotIn("apt-packages", self.workflow["on"]["workflow_call"]["inputs"])
         self.assertIn("expected=17", workflow)
 
 
