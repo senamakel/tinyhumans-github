@@ -106,6 +106,14 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                             bad_package, 75,
                         )
 
+        fake = FIXTURES.module_release_fixture(VERIFY, "tinyhumansai/tinyconnectors", "tinyconnectors")
+        fake.api.repository = "tinyhumansai/tinybox"
+        with self.assertRaisesRegex(VERIFY.VerificationError, "does not match the canonical module profile"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, "tinyhumansai/tinyconnectors", "v0.1.7",
+                "0.1.7", "tinyconnectors", 75,
+            )
+
     def test_ci_workflow_identity_spoof_fails_closed(self):
         for repository, package in VERIFY.MODULE_PACKAGES.items():
             fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
@@ -116,6 +124,15 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                         fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7",
                         package, 75,
                     )
+
+        repository = "tinyhumansai/tinyjuice"
+        package = VERIFY.MODULE_PACKAGES[repository]
+        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+        fake.api.checks[fake.heads[75]][0]["app"]["id"] = 1
+        with self.assertRaisesRegex(VERIFY.VerificationError, "trusted CI check is missing"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            )
 
     def test_canonical_ci_event_repository_base_and_reusable_workflow_are_bound(self):
         repository = "tinyhumansai/tinyconnectors"
@@ -174,6 +191,13 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
             )
 
         fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+        fake.api.threads[75] = [{"isResolved": False, "isOutdated": False}]
+        with self.assertRaisesRegex(VERIFY.VerificationError, "unresolved review thread"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            )
+
+        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
         fake.api.reviews[75] = [{
             "user": {"login": "reviewer"}, "state": "CHANGES_REQUESTED",
             "commit_id": fake.heads[75], "submitted_at": "2026-10-17T12:00:00Z", "id": 750,
@@ -202,13 +226,6 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
             )
 
-        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
-        fake.api.threads[75] = [{"isResolved": False, "isOutdated": False}]
-        with self.assertRaisesRegex(VERIFY.VerificationError, "unresolved review thread"):
-            VERIFY.verify_reviewed_release(
-                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
-            )
-
     def test_synthetic_merge_tree_must_match_canonical_reviewed_merge(self):
         repository = "tinyhumansai/tinyjuice"
         package = VERIFY.MODULE_PACKAGES[repository]
@@ -223,6 +240,12 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
             VERIFY.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
             )
+
+    def test_rest_pagination_exhaustion_is_a_hard_failure(self):
+        api = VERIFY.GitHubApi("placeholder-token", "tinyhumansai/tinyconnectors")
+        api._request = lambda _path, **_kwargs: [None] * 100
+        with self.assertRaisesRegex(VERIFY.VerificationError, "pagination exceeded"):
+            api.rest_pages("repos/tinyhumansai/tinyconnectors/pulls")
 
     def test_existing_sdk_and_module_release_sources_remain_byte_identical_to_upstream(self):
         import subprocess
@@ -326,6 +349,9 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
 
     def test_fixed_native_and_distro_targets_are_required_and_registry_is_absent(self):
         workflow = (ROOT / ".github/workflows/module-reviewed-epic-release.yml").read_text()
+        jobs = self.workflow["jobs"]
+        self.assertEqual(len(jobs["native"]["strategy"]["matrix"]["include"]), 11)
+        self.assertEqual(len(jobs["distro"]["strategy"]["matrix"]["include"]), 6)
         self.assertNotIn("publish-crates-io", workflow)
         self.assertNotIn("CARGO_REGISTRY_TOKEN", workflow)
         self.assertNotIn("include-distros", workflow)

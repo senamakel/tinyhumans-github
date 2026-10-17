@@ -126,6 +126,18 @@ against the verified SHA. It has no crates.io path. Remove this temporary
 workflow and action before the epic's final rollup; once the epic reaches main,
 use the unchanged `module-release.yml` entrypoint.
 
+The verifier's initial profiles are literal and closed:
+
+| Canonical repository | Cargo package | Asset stem | CI workflow ID | Manifest | Extra package files |
+| --- | --- | --- | ---: | --- | --- |
+| `tinyhumansai/tinyconnectors` | `tinyconnectors` | `tinyconnectors` | `345777017` | `Cargo.toml` | none |
+| `tinyhumansai/tinybox` | `tinybox-module` | `tinybox` | `334144667` | `Cargo.toml` | none |
+| `tinyhumansai/tinyjuice` | `tinyjuice-module` | `tinyjuice` | `307270985` | `Cargo.toml` | `docs/specs/tinybus-module.md` |
+
+Add another repository only through a separately reviewed update to this
+allowlist, including its actual canonical CI workflow identity and package
+profile.
+
 ## Drift detection
 
 The shared repository's CI runs offline regression tests on every PR. On every
