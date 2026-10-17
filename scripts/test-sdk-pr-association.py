@@ -155,7 +155,7 @@ class WorkflowPullAssociationTests(unittest.TestCase):
         with patch.object(self.verify.verify.urllib.request, "build_opener", return_value=Opener()):
             result = self.verify.verify.GitHubApi("private-token", "tinyhumansai/tinybus").job_logs(123)
         self.assertEqual(result, b"safe")
-        self.assertIn("Authorization", requests[0].header_items()[0][0])
+        self.assertTrue(any(name.lower() == "authorization" for name, _ in requests[0].header_items()))
         self.assertFalse(any(name.lower() == "authorization" for name, _ in requests[1].header_items()))
 
         for location in ("http://logs.example.invalid/logs", "https://user@logs.example.invalid/logs"):
