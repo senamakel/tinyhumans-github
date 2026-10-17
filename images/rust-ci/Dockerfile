@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
         libasound2-dev libxdo-dev libxtst-dev libx11-dev libevdev-dev \
         xvfb xauth at-spi2-core dbus-x11 webkit2gtk-driver \
+        awscli openssh-client uidmap slirp4netns iptables iproute2 \
     && rm -rf /var/lib/apt/lists/*
 
 # MongoDB 7.0 and mongosh, for tests that need a real server

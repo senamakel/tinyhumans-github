@@ -21,6 +21,12 @@ jq --version
 node --version
 pnpm --version
 python3 -c 'import tomli'
+aws --version
+ssh -V
+slirp4netns --version
+iptables --version
+command -v newuidmap
+command -v newgidmap
 patchelf --version
 tauri-driver --help
 WebKitWebDriver --help
