@@ -221,7 +221,7 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 return []
 
         fake.api.jobs_for_workflow_run = current_attempt_jobs
-        with self.assertRaisesRegex(VERIFY.VerificationError, "fmt job"):
+        with self.assertRaisesRegex(VERIFY.VerificationError, "trusted CI check is missing"):
             VERIFY.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
             )
