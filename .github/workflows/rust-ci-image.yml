@@ -29,10 +29,12 @@ jobs:
         include:
           - mongodb: '7.0'
             version: '7.0.45'
+            pnpm: '10.10.0'
             fingerprint: E58830201F7DD82CD808AA84160D26BB1785BA38
             tag: ''
           - mongodb: '8.0'
             version: '8.0.34'
+            pnpm: '10.34.5'
             fingerprint: 4B0752C1BCA238C0B4EE14DC41DE058A4E7DCA05
             tag: 'mongo8-'
 
@@ -61,6 +63,7 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           provenance: false
           build-args: |
+            PNPM_VERSION=${{ matrix.pnpm }}
             MONGODB_MAJOR=${{ matrix.mongodb }}
             MONGODB_VERSION=${{ matrix.version }}
             MONGODB_KEY_FINGERPRINT=${{ matrix.fingerprint }}

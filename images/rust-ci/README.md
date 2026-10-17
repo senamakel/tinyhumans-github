@@ -100,7 +100,7 @@ image build smoke tests cannot prove the host kernel supports user namespaces.
 
 OpenIntents requires MongoDB 8. The publisher also builds `mongo8-latest`,
 `mongo8-rust-<stable>` and `mongo8-sha-<commit>` using MongoDB 8.0.34,
-with its own verified signing key. Existing tags keep MongoDB 7.0.45.
+with its own verified signing key and pnpm 10.34.5. Existing tags keep MongoDB 7.0.45.
 Both variants smoke-test replica-set primary readiness and a transaction.
 Consumers must pin the published digest and roll matching idle EX63 guests
 before enabling that pin. Do not replace an active slot's rootfs.
