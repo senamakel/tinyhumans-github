@@ -96,7 +96,7 @@ class WorkflowPullAssociationTests(unittest.TestCase):
         }]
         synthetic = base_tests.sha(81)
         fake.api.workflow_runs[fake.heads[75]][0] = run
-        fake.api.job_logs_archive = lambda _job_id: zip_logs(valid_checkout_log(synthetic, 75))
+        fake.api.job_logs = lambda _job_id: zip_logs(valid_checkout_log(synthetic, 75))
         actual_parents = fake.parents[fake.merges[75]]
         fake.api.commit_parents = lambda commit: (
             actual_parents if commit in {synthetic, fake.merges[75]} else ()
@@ -120,7 +120,7 @@ class WorkflowPullAssociationTests(unittest.TestCase):
                 "path": f"tinyhumansai/.github/.github/workflows/module-ci.yml@{pin}",
                 "sha": pin,
             }]
-            fake.api.job_logs_archive = lambda _job_id, contents=log: zip_logs(contents)
+            fake.api.job_logs = lambda _job_id, contents=log: zip_logs(contents)
             actual_parents = fake.parents[fake.merges[75]]
             synthetic_parents = parents or actual_parents
             fake.api.commit_parents = lambda commit, sp=synthetic_parents: (
@@ -138,7 +138,7 @@ class WorkflowPullAssociationTests(unittest.TestCase):
             "path": f"tinyhumansai/.github/.github/workflows/module-ci.yml@{historical_ci.MODULE_CI_PIN}",
             "sha": historical_ci.MODULE_CI_PIN,
         }]
-        fake.api.job_logs_archive = lambda _job_id: b""
+        fake.api.job_logs = lambda _job_id: b""
         self.fake = fake
         with self.assertRaisesRegex(self.verify.verify.VerificationError, "logs|archive"):
             self.run_verification()

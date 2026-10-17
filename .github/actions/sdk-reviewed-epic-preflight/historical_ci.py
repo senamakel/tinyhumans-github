@@ -17,8 +17,8 @@ MAX_LOG_FILES = 64
 def verify_empty_association(api, workflow_run: dict, job: dict, pull: dict) -> None:
     """Accept an empty PR association only when immutable fmt logs bind this PR."""
     _verify_reusable_workflow_pin(workflow_run)
-    archive = api.job_logs_archive(job["id"])
-    text = _decode_archive(archive)
+    payload = api.job_logs(job["id"])
+    text = _decode_job_logs(payload)
     synthetic_sha = _checkout_merge_sha(text, pull["number"])
     synthetic_parents = api.commit_parents(synthetic_sha)
     reviewed_parents = api.commit_parents(pull["merge_sha"])
@@ -47,11 +47,16 @@ def _verify_reusable_workflow_pin(workflow_run: dict) -> None:
         raise ValueError("historical CI reusable workflow pin could not be proven")
 
 
-def _decode_archive(archive: bytes) -> str:
-    if not isinstance(archive, bytes) or not archive or len(archive) > MAX_ARCHIVE_BYTES:
+def _decode_job_logs(payload: bytes) -> str:
+    if not isinstance(payload, bytes) or not payload or len(payload) > MAX_ARCHIVE_BYTES:
         raise ValueError("historical CI job logs were missing or exceeded their size bound")
+    if not zipfile.is_zipfile(io.BytesIO(payload)):
+        try:
+            return payload.decode("utf-8-sig", errors="strict")
+        except UnicodeDecodeError as error:
+            raise ValueError("historical CI job logs were not valid UTF-8") from error
     try:
-        with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+        with zipfile.ZipFile(io.BytesIO(payload)) as bundle:
             names = [name for name in bundle.namelist() if not name.endswith("/")]
             if not names or len(names) > MAX_LOG_FILES:
                 raise ValueError("historical CI job log archive had an invalid file set")

@@ -188,7 +188,7 @@ class GitHubApi:
             collection="jobs",
         )
 
-    def job_logs_archive(self, job_id: int) -> bytes:
+    def job_logs(self, job_id: int) -> bytes:
         if type(job_id) is not int or job_id < 1:
             raise VerificationError("canonical fmt job id was invalid")
         url = f"https://api.github.com/repos/{self.repository}/actions/jobs/{job_id}/logs"
