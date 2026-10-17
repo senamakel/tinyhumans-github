@@ -11,6 +11,7 @@ TRUSTED_MODULE_CI_PINS = {
     "tinyhumansai/tinyconnectors": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
     "tinyhumansai/tinybox": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
     "tinyhumansai/tinyjuice": "3e87ade76b622844985d0c665a3b075313e4545c",
+    "tinyhumansai/tinywallet": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
 }
 
 

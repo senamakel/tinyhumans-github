@@ -39,13 +39,14 @@ FIXTURE_SPEC.loader.exec_module(FIXTURES)
 
 
 class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
-    def test_only_three_exact_canonical_repository_package_workflow_profiles_exist(self):
+    def test_only_four_exact_canonical_repository_package_workflow_profiles_exist(self):
         self.assertEqual(
             VERIFY.CI_WORKFLOW_IDS,
             {
                 "tinyhumansai/tinyconnectors": 345777017,
                 "tinyhumansai/tinybox": 334144667,
                 "tinyhumansai/tinyjuice": 307270985,
+                "tinyhumansai/tinywallet": 331024528,
             },
         )
         self.assertEqual(
@@ -54,6 +55,7 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinyconnectors": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
                 "tinyhumansai/tinybox": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
                 "tinyhumansai/tinyjuice": "3e87ade76b622844985d0c665a3b075313e4545c",
+                "tinyhumansai/tinywallet": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
             },
         )
         self.assertEqual(
@@ -62,6 +64,7 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinyconnectors": "tinyconnectors",
                 "tinyhumansai/tinybox": "tinybox-module",
                 "tinyhumansai/tinyjuice": "tinyjuice-module",
+                "tinyhumansai/tinywallet": "tinywallet-module",
             },
         )
         self.assertEqual(VERIFY.CHECK_APP_ID, 15368)
@@ -78,6 +81,8 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
             {repo: profile["manifest"] for repo, profile in VERIFY.MODULE_PROFILES.items()},
             {repo: "Cargo.toml" for repo in VERIFY.MODULE_PROFILES},
         )
+        self.assertEqual(VERIFY.MODULE_PROFILES["tinyhumansai/tinywallet"]["asset"], "tinywallet-module")
+        self.assertEqual(VERIFY.MODULE_PROFILES["tinyhumansai/tinywallet"]["extra_files"], [])
         self.assertEqual(
             VERIFY.MODULE_PROFILES["tinyhumansai/tinyjuice"]["extra_files"],
             ["docs/specs/tinybus-module.md"],
