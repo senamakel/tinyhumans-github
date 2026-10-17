@@ -6,6 +6,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 import tempfile
@@ -790,13 +791,15 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         )
 
     def test_tinyvoice_profile_uses_exact_nested_manifest_and_all_native_dependencies(self):
-        workflow = (ROOT / ".github/workflows/module-reviewed-epic-release.yml").read_text()
         validate = self.workflow["jobs"]["validate"]
         native = self.workflow["jobs"]["native"]
         distro = self.workflow["jobs"]["distro"]
         self.assertIn("crates/tinyvoice-module/Cargo.toml", str(validate))
         self.assertIn("MODULE_APT_PACKAGES", str(native))
-        self.assertIn("libasound2-dev libx11-dev libxtst-dev libxi-dev", str(native))
+        self.assertEqual(
+            VERIFY.MODULE_PROFILES["tinyhumansai/tinyvoice"]["apt_packages"],
+            "libasound2-dev libx11-dev libxtst-dev libxi-dev",
+        )
         self.assertIn("scripts/test-distro.sh", str(distro))
         self.assertIn("MODULE_APT_PACKAGES", str(native))
 
