@@ -13,6 +13,8 @@ def reviewed_release_fixture(verifier):
             self.checks = {}
             self.workflow_runs = {}
             self.workflow_jobs = {}
+            self.logs = {}
+            self.parents_by_sha = {}
 
         def tag_commit(self, tag):
             return self.tags[tag]
@@ -40,6 +42,12 @@ def reviewed_release_fixture(verifier):
 
         def jobs_for_workflow_run(self, run_id, attempt):
             return self.workflow_jobs[(run_id, attempt)]
+
+        def job_logs(self, job_id):
+            return self.logs[job_id]
+
+        def commit_parents(self, commit):
+            return self.parents_by_sha[commit]
 
     class Git:
         def __init__(self, parents):
@@ -116,14 +124,34 @@ def reviewed_release_fixture(verifier):
             "head_branch": "feature",
             "head_repository": {"full_name": "senamakel/tinybus"},
             "repository": {"full_name": "tinyhumansai/tinybus"},
-            "pull_requests": [{"number": number}],
+            "pull_requests": [{
+                "number": number,
+                "url": f"https://api.github.com/repos/tinyhumansai/tinybus/pulls/{number}",
+                "base": {
+                    "ref": "epic/8056-modules-wiring",
+                    "sha": parents[merge][0],
+                    "repo": {"full_name": "tinyhumansai/tinybus"},
+                },
+                "head": {
+                    "ref": "feature",
+                    "sha": heads[number],
+                    "repo": {"full_name": "senamakel/tinybus"},
+                },
+            }],
+            "referenced_workflows": [{
+                "path": (
+                    "tinyhumansai/.github/.github/workflows/module-ci.yml@"
+                    "4adc1080fb495098e7af1aade82ed7e6e3c69bb7"
+                ),
+                "sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+            }],
             "run_number": 100 + number,
             "run_attempt": 1,
             "check_suite_id": 2000 + number,
         }]
         api.workflow_jobs[(run_id, 1)] = [
             {
-                "id": 3000 + index,
+                "id": run_id + 2000 + index,
                 "name": name,
                 "run_id": run_id,
                 "run_attempt": 1,
@@ -136,6 +164,10 @@ def reviewed_release_fixture(verifier):
             }
             for index, name in enumerate(verifier.REQUIRED_CHECKS)
         ]
+        synthetic = sha(80 + number)
+        api.parents_by_sha[synthetic] = parents[merge]
+        api.parents_by_sha[merge] = parents[merge]
+        api.logs[run_id + 2000] = _fmt_job_log(synthetic, number)
     api.reviews[74] = [
         {
             "user": {"login": "tinysweeper[bot]"},
@@ -181,4 +213,24 @@ def reviewed_release_fixture(verifier):
 
 def sha(value):
     return f"{value:040x}"
+
+
+def _fmt_job_log(synthetic_sha, pull_number):
+    def line(message):
+        return f"module-ci / fmt\tUNKNOWN STEP\t2026-10-17T09:38:22.8052667Z {message}"
+
+    return "\n".join([
+        line("Uses: tinyhumansai/.github/.github/workflows/module-ci.yml@"
+             "4adc1080fb495098e7af1aade82ed7e6e3c69bb7"),
+        line("##[group] Inputs"),
+        line("##[endgroup]"),
+        line("Complete job name: module-ci / fmt"),
+        line("##[group]Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262"),
+        line(f"[command]/usr/bin/git fetch +{synthetic_sha}:refs/remotes/pull/{pull_number}/merge"),
+        line(f"[command]/usr/bin/git checkout refs/remotes/pull/{pull_number}/merge"),
+        line(f"Note: switching to 'refs/remotes/pull/{pull_number}/merge'."),
+        line("[command]/usr/bin/git log -1 --format=%H"),
+        line(synthetic_sha),
+        line("##[group]Run dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249"),
+    ])
 

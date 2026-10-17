@@ -14,7 +14,7 @@ import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from historical_ci import verify_empty_association
+from historical_ci import verify_ci_merge_provenance
 
 
 CANONICAL_REPO = "tinyhumansai/tinybus"
@@ -473,6 +473,7 @@ def _verify_required_checks(api, pull: dict) -> None:
     ]
     associated_runs = []
     empty_association_runs = []
+    associated_pull_by_run = {}
     for run in canonical_runs:
         associated_pulls = run.get("pull_requests")
         if not isinstance(associated_pulls, list):
@@ -490,6 +491,9 @@ def _verify_required_checks(api, pull: dict) -> None:
             associated_numbers.append(number)
         if pull["number"] in associated_numbers:
             associated_runs.append(run)
+            associated_pull_by_run[run["id"]] = next(
+                item for item in associated_pulls if item.get("number") == pull["number"]
+            )
     canonical_runs = associated_runs + empty_association_runs
     if not canonical_runs:
         raise VerificationError("canonical CI workflow run could not be proven for the exact pull request")
@@ -501,6 +505,9 @@ def _verify_required_checks(api, pull: dict) -> None:
         raise VerificationError("latest canonical CI workflow run is not successful")
 
     historical_empty_association = workflow_run.get("pull_requests") == []
+    workflow_association = None if historical_empty_association else associated_pull_by_run.get(workflow_run["id"])
+    if not historical_empty_association and workflow_association is None:
+        raise VerificationError("canonical CI run association for the exact pull request was lost")
 
     jobs = api.jobs_for_workflow_run(workflow_run["id"], workflow_run["run_attempt"])
     job_by_name = {}
@@ -540,9 +547,9 @@ def _verify_required_checks(api, pull: dict) -> None:
         )
         if latest.get("status") != "completed" or latest.get("conclusion") != "success":
             raise VerificationError(f"trusted CI check is not successful: {required}")
-        if historical_empty_association and required == REQUIRED_CHECKS[0]:
+        if required == REQUIRED_CHECKS[0]:
             try:
-                verify_empty_association(api, workflow_run, job, pull)
+                verify_ci_merge_provenance(api, workflow_run, job, pull, workflow_association)
             except ValueError as error:
                 raise VerificationError(str(error)) from error
 

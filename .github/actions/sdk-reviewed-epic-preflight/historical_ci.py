@@ -14,8 +14,9 @@ MAX_LOG_BYTES = 16 * 1024 * 1024
 MAX_LOG_FILES = 64
 
 
-def verify_empty_association(api, workflow_run: dict, job: dict, pull: dict) -> None:
-    """Accept an empty PR association only when immutable fmt logs bind this PR."""
+def verify_ci_merge_provenance(api, workflow_run: dict, job: dict, pull: dict,
+                               association: dict | None) -> None:
+    """Bind CI's tested merge to the canonical merged PR, including direct associations."""
     _verify_reusable_workflow_pin(workflow_run)
     payload = api.job_logs(job["id"])
     text = _decode_job_logs(payload)
@@ -24,6 +25,36 @@ def verify_empty_association(api, workflow_run: dict, job: dict, pull: dict) -> 
     reviewed_parents = api.commit_parents(pull["merge_sha"])
     if synthetic_parents != reviewed_parents:
         raise ValueError("historical CI checkout parents did not match the reviewed merge")
+    if association is not None:
+        _verify_event_association(association, pull, reviewed_parents)
+
+
+def _verify_event_association(association: dict, pull: dict,
+                              reviewed_parents: tuple[str, ...]) -> None:
+    number = pull["number"]
+    if association.get("url") != f"https://api.github.com/repos/tinyhumansai/tinybus/pulls/{number}":
+        raise ValueError("workflow run pull request URL did not identify the canonical PR")
+    base = association.get("base")
+    head = association.get("head")
+    if not isinstance(base, dict) or not isinstance(head, dict):
+        raise ValueError("workflow run pull request base or head was missing")
+    base_repo = base.get("repo")
+    head_repo = head.get("repo")
+    if (
+        not isinstance(base_repo, dict)
+        or base_repo.get("full_name") != "tinyhumansai/tinybus"
+        or not isinstance(head_repo, dict)
+        or head_repo.get("full_name") != pull["head_repository"]
+    ):
+        raise ValueError("workflow run pull request repository binding did not match")
+    if (
+        base.get("ref") != "epic/8056-modules-wiring"
+        or base.get("sha") != reviewed_parents[0]
+        or head.get("ref") != pull["head_ref"]
+        or head.get("sha") != pull["head_sha"]
+        or reviewed_parents[1] != pull["head_sha"]
+    ):
+        raise ValueError("workflow run pull request base or head binding did not match the reviewed merge")
 
 
 def _verify_reusable_workflow_pin(workflow_run: dict) -> None:
