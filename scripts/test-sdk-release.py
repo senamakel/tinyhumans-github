@@ -196,7 +196,7 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
 
         fake = reviewed_release_fixture(self.verify)
         fake.parents[fake.tag_sha] = (fake.merges[74], "e" * 40)
-        with self.assertRaisesRegex(self.verify.VerificationError, "head commit"):
+        with self.assertRaisesRegex(self.verify.VerificationError, "exact merged pull request"):
             self.verify.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
                 "0.1.7", "tinybus", 73,
@@ -228,7 +228,7 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
             "submitted_at": "2026-10-17T12:00:00Z",
             "id": 999,
         })
-        with self.assertRaisesRegex(self.verify.VerificationError, "changes requested"):
+        with self.assertRaisesRegex(self.verify.VerificationError, "changes-requested"):
             self.verify.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
                 "0.1.7", "tinybus", 73,
