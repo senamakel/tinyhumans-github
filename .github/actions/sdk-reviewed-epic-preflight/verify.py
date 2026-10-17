@@ -13,6 +13,9 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from historical_ci import verify_empty_association
+
 
 CANONICAL_REPO = "tinyhumansai/tinybus"
 EPIC_BASE = "epic/8056-modules-wiring"
@@ -184,6 +187,61 @@ class GitHubApi:
             f"repos/{self.repository}/actions/runs/{run_id}/attempts/{attempt}/jobs",
             collection="jobs",
         )
+
+    def job_logs_archive(self, job_id: int) -> bytes:
+        if type(job_id) is not int or job_id < 1:
+            raise VerificationError("canonical fmt job id was invalid")
+        url = f"https://api.github.com/repos/{self.repository}/actions/jobs/{job_id}/logs"
+        request = urllib.request.Request(url, headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {self.token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        })
+        opener = urllib.request.build_opener(_NoRedirect())
+        try:
+            try:
+                response = opener.open(request, timeout=30)
+            except urllib.error.HTTPError as redirect:
+                if redirect.code not in {301, 302, 303, 307, 308}:
+                    raise VerificationError("canonical fmt job logs could not be downloaded") from redirect
+                location = redirect.headers.get("Location")
+                parsed = urllib.parse.urlsplit(location or "")
+                if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+                    raise VerificationError("canonical fmt job log redirect was invalid") from redirect
+                # The signed archive URL is deliberately requested without GitHub credentials.
+                response = opener.open(urllib.request.Request(location), timeout=30)
+            with response:
+                content_length = response.headers.get("Content-Length")
+                if content_length is not None:
+                    try:
+                        if int(content_length) > 8 * 1024 * 1024:
+                            raise VerificationError("canonical fmt job logs exceeded their size bound")
+                    except ValueError as error:
+                        raise VerificationError("canonical fmt job log size was malformed") from error
+                payload = response.read(8 * 1024 * 1024 + 1)
+                if len(payload) > 8 * 1024 * 1024:
+                    raise VerificationError("canonical fmt job logs exceeded their size bound")
+                return payload
+        except (urllib.error.URLError, TimeoutError, OSError) as error:
+            raise VerificationError("canonical fmt job logs could not be downloaded") from error
+
+    def commit_parents(self, commit: str) -> tuple[str, ...]:
+        commit = _sha(commit, "historical CI checkout")
+        response = self._request(f"repos/{self.repository}/git/commits/{commit}")
+        parents = response.get("parents") if isinstance(response, dict) else None
+        if not isinstance(parents, list) or len(parents) != 2:
+            raise VerificationError("historical CI merge commit did not have two parents")
+        try:
+            return tuple(_sha(parent["sha"], "historical merge parent") for parent in parents)
+        except (KeyError, TypeError) as error:
+            raise VerificationError("historical CI merge parents were malformed") from error
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Keep bearer credentials off the signed job-log archive redirect."""
+
+    def redirect_request(self, request, fp, code, message, headers, new_url):
+        return None
 
 
 class BareHistory:
@@ -415,8 +473,11 @@ def _verify_required_checks(api, pull: dict) -> None:
     associated_runs = []
     for run in canonical_runs:
         associated_pulls = run.get("pull_requests")
-        if not isinstance(associated_pulls, list) or not associated_pulls:
-            raise VerificationError("canonical CI workflow run has no pull request association")
+        if not isinstance(associated_pulls, list):
+            raise VerificationError("canonical CI workflow run has a missing or malformed pull request association")
+        if not associated_pulls:
+            empty_association_runs.append(run)
+            continue
         associated_numbers = []
         for associated_pull in associated_pulls:
             if not isinstance(associated_pull, dict):
@@ -427,7 +488,7 @@ def _verify_required_checks(api, pull: dict) -> None:
             associated_numbers.append(number)
         if pull["number"] in associated_numbers:
             associated_runs.append(run)
-    canonical_runs = associated_runs
+    canonical_runs = associated_runs + empty_association_runs
     if not canonical_runs:
         raise VerificationError("canonical CI workflow run could not be proven for the exact pull request")
     workflow_run = max(
@@ -436,6 +497,8 @@ def _verify_required_checks(api, pull: dict) -> None:
     )
     if workflow_run.get("status") != "completed" or workflow_run.get("conclusion") != "success":
         raise VerificationError("latest canonical CI workflow run is not successful")
+
+    historical_empty_association = workflow_run.get("pull_requests") == []
 
     jobs = api.jobs_for_workflow_run(workflow_run["id"], workflow_run["run_attempt"])
     job_by_name = {}
@@ -475,6 +538,11 @@ def _verify_required_checks(api, pull: dict) -> None:
         )
         if latest.get("status") != "completed" or latest.get("conclusion") != "success":
             raise VerificationError(f"trusted CI check is not successful: {required}")
+        if historical_empty_association and required == REQUIRED_CHECKS[0]:
+            try:
+                verify_empty_association(api, workflow_run, job, pull)
+            except ValueError as error:
+                raise VerificationError(str(error)) from error
 
 
 def _check_run_id(value) -> int:
