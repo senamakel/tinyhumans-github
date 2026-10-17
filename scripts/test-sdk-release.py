@@ -212,7 +212,7 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
 
         fake = reviewed_release_fixture(self.verify)
         fake.parents[fake.merges[72]] = (fake.base,)
-        with self.assertRaisesRegex(self.verify.VerificationError, "two parents"):
+        with self.assertRaisesRegex(self.verify.VerificationError, "two-parent"):
             self.verify.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
                 "0.1.7", "tinybus", 73,
