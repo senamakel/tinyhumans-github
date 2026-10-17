@@ -339,7 +339,8 @@ class ReviewedReleaseApiPaginationTests(unittest.TestCase):
 def reviewed_release_fixture(verifier):
     class Api:
         def __init__(self):
-            self.tags = {"v0.1.7": sha(4)}
+            self.repository = "tinyhumansai/tinybus"
+            self.tags = {"v0.1.7": sha(5)}
             self.main = sha(1)
             self.pulls = {}
             self.associations = {}
@@ -381,12 +382,13 @@ def reviewed_release_fixture(verifier):
             return commit == head
 
     base = sha(1)
-    merges = {72: sha(2), 74: sha(3), 73: sha(4)}
-    heads = {72: sha(12), 74: sha(13), 73: sha(14)}
+    merges = {72: sha(2), 74: sha(3), 73: sha(4), 75: sha(5)}
+    heads = {72: sha(12), 74: sha(13), 73: sha(14), 75: sha(15)}
     parents = {
         merges[72]: (base, heads[72]),
         merges[74]: (merges[72], heads[74]),
         merges[73]: (merges[74], heads[73]),
+        merges[75]: (merges[73], heads[75]),
     }
     api = Api()
     api.associations = {merge: [number] for number, merge in merges.items()}
@@ -455,7 +457,7 @@ def reviewed_release_fixture(verifier):
     fake.base = base
     fake.merges = merges
     fake.heads = heads
-    fake.tag_sha = merges[73]
+    fake.tag_sha = merges[75]
     fake.parents = parents
     fake.associations = api.associations
     fake.reviews = api.reviews
