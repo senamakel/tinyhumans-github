@@ -658,9 +658,17 @@ def _check_run_id(value, repository: str) -> int:
 
 def _validate_module(repository: str, package: str) -> dict:
     """Resolve only an exact canonical repository and compiled-in package."""
-    profile = MODULE_PROFILES.get(repository)
-    if profile is None or profile["package"] != package:
+    profile = _module_profile(repository)
+    if profile["package"] != package:
         raise VerificationError("repository and module package are outside the reviewed allowlist")
+    return profile
+
+
+def _module_profile(repository: str) -> dict:
+    """Resolve the literal profile before reading repository-specific API data."""
+    profile = MODULE_PROFILES.get(repository)
+    if profile is None:
+        raise VerificationError("repository is outside the reviewed module allowlist")
     return profile
 
 
@@ -674,8 +682,14 @@ def main() -> int:
     mode = os.environ.get("MODE", "reviewed")
     repository = os.environ.get("GH_REPO", "")
     tag = os.environ.get("TAG", "")
+    profile = _module_profile(repository)
+    supplied_package = os.environ.get("PACKAGE", "")
+    if supplied_package and supplied_package != profile["package"]:
+        raise VerificationError("repository and module package are outside the reviewed allowlist")
+    if mode == "tag-only" and not supplied_package:
+        raise VerificationError("tag-only verification requires the compiled-in module package")
+    package = profile["package"]
     token = os.environ.get("GH_TOKEN", "")
-    package = os.environ.get("PACKAGE", "")
     if not token:
         raise VerificationError("GitHub read token was not provided")
     api = GitHubApi(token, repository)
@@ -698,7 +712,6 @@ def main() -> int:
         package,
         reviewed_pr,
     )
-    profile = _validate_module(repository, package)
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         output.write(f"source-sha={source_sha}\n")
         output.write(f"module-package={profile['package']}\n")

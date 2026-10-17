@@ -99,11 +99,26 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                             mock.patch.object(VERIFY, "BareHistory", return_value=fake.git), \
                             mock.patch.dict(os.environ, environment, clear=False):
                         self.assertEqual(VERIFY.main(), 0)
-                outputs = dict(
-                    line.split("=", 1) for line in output_path.read_text().splitlines()
-                )
-                self.assertEqual(outputs["module-package"], package)
-                self.assertEqual(outputs["source-sha"], fake.tag_sha)
+                        outputs = dict(
+                            line.split("=", 1) for line in output_path.read_text().splitlines()
+                        )
+                        self.assertEqual(outputs["module-package"], package)
+                        self.assertEqual(outputs["source-sha"], fake.tag_sha)
+
+    def test_main_rejects_explicit_package_mismatch_before_github_api_use(self):
+        environment = {
+            "MODE": "reviewed",
+            "GH_REPO": "tinyhumansai/tinyconnectors",
+            "GH_TOKEN": "test-token",
+            "TAG": "v0.1.7",
+            "VERSION": "0.1.7",
+            "REVIEWED_PR": "75",
+            "PACKAGE": "tinybox-module",
+        }
+        with mock.patch.object(VERIFY, "GitHubApi", side_effect=AssertionError("API must not run")), \
+                mock.patch.dict(os.environ, environment, clear=False):
+            with self.assertRaisesRegex(VERIFY.VerificationError, "outside the reviewed allowlist"):
+                VERIFY.main()
 
     def test_each_allowed_repository_accepts_the_complete_reviewed_merge_history(self):
         for repository, package in VERIFY.MODULE_PACKAGES.items():
