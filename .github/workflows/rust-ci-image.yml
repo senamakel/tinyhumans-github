@@ -27,6 +27,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
+      - name: Test the default mold linker
+        run: bash images/rust-ci/test-mold-linker.sh
       - name: Read the image's Rust version
         id: meta
         run: |
