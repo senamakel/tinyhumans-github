@@ -39,6 +39,12 @@ outputs:
   extra-packaged-files:
     description: Compiled-in JSON array of extra package files for the canonical caller repository.
     value: ${{ steps.verify.outputs.extra-packaged-files }}
+  module-apt-packages:
+    description: Compiled-in Ubuntu dependencies required by the canonical module package.
+    value: ${{ steps.verify.outputs.module-apt-packages }}
+  module-source-bundle:
+    description: Compiled-in source bundle profile generated only after reviewed admission.
+    value: ${{ steps.verify.outputs.module-source-bundle }}
 runs:
   using: composite
   steps:
