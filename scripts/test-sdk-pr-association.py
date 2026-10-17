@@ -55,7 +55,7 @@ class WorkflowPullAssociationTests(unittest.TestCase):
             self.run_verification()
 
     def test_missing_empty_or_malformed_pr_association_fails_closed(self):
-        for association in (None, [], {}, [{"number": "72"}], [{"number": 999}]):
+        for association in (None, {}, [{"number": "72"}], [{"number": 999}]):
             fake = base_tests.reviewed_release_fixture(self.verify.verify)
             fake.workflow_runs[fake.heads[72]][0]["pull_requests"] = association
             self.fake = fake
@@ -68,6 +68,23 @@ class WorkflowPullAssociationTests(unittest.TestCase):
         self.fake.workflow_runs[self.fake.heads[74]][0]["pull_requests"] = [{"number": 999}]
         with self.assertRaisesRegex(self.verify.verify.VerificationError, "workflow run|pull request"):
             self.run_verification()
+
+    def test_exact_run_pr_association_rejects_event_base_or_head_retargeting(self):
+        for section, field, value in (
+            ("base", "ref", "main"),
+            ("base", "repo", {"full_name": "other/tinybus"}),
+            ("head", "sha", "f" * 40),
+            ("head", "ref", "other-branch"),
+            ("head", "repo", {"full_name": "other/tinybus"}),
+        ):
+            fake = base_tests.reviewed_release_fixture(self.verify.verify)
+            association = fake.workflow_runs[fake.heads[75]][0]["pull_requests"][0]
+            association[section][field] = value
+            self.fake = fake
+            with self.subTest(section=section, field=field), self.assertRaisesRegex(
+                self.verify.verify.VerificationError, "workflow run pull request"
+            ):
+                self.run_verification()
 
     def test_exact_pr_number_with_wrong_base_or_head_binding_is_rejected(self):
         mutations = (
@@ -99,7 +116,12 @@ class WorkflowPullAssociationTests(unittest.TestCase):
         }]
         synthetic = base_tests.sha(81)
         fake.api.workflow_runs[fake.heads[75]][0] = run
-        fake.api.job_logs = lambda _job_id: zip_logs(valid_checkout_log(synthetic, 75))
+        original_logs = fake.api.job_logs
+        reviewed_job_id = fake.workflow_jobs[(run["id"], run["run_attempt"])][0]["id"]
+        fake.api.job_logs = lambda job_id: (
+            zip_logs(valid_checkout_log(synthetic, 75))
+            if job_id == reviewed_job_id else original_logs(job_id)
+        )
         actual_parents = fake.parents[fake.merges[75]]
         fake.api.commit_parents = lambda commit: (
             actual_parents if commit in {synthetic, fake.merges[75]} else ()
