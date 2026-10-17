@@ -14,6 +14,8 @@ TRUSTED_MODULE_CI_PINS = {
     "tinyhumansai/tinywallet": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
     "tinyhumansai/tinymcp": "62c8ae0468f3882b75947d5cba9687e609ce1fed",
     "tinyhumansai/tinychannels": "3e87ade76b622844985d0c665a3b075313e4545c",
+    "tinyhumansai/tinydocs": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+    "tinyhumansai/tinyvoice": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
 }
 
 

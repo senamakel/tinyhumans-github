@@ -40,7 +40,7 @@ FIXTURE_SPEC.loader.exec_module(FIXTURES)
 
 
 class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
-    def test_only_six_exact_canonical_repository_package_workflow_profiles_exist(self):
+    def test_only_eight_exact_canonical_repository_package_workflow_profiles_exist(self):
         self.assertEqual(
             VERIFY.CI_WORKFLOW_IDS,
             {
@@ -50,6 +50,8 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinywallet": 331024528,
                 "tinyhumansai/tinymcp": 339480400,
                 "tinyhumansai/tinychannels": 307289287,
+                "tinyhumansai/tinydocs": 331024957,
+                "tinyhumansai/tinyvoice": 333928426,
             },
         )
         self.assertEqual(
@@ -61,6 +63,8 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinywallet": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
                 "tinyhumansai/tinymcp": "62c8ae0468f3882b75947d5cba9687e609ce1fed",
                 "tinyhumansai/tinychannels": "3e87ade76b622844985d0c665a3b075313e4545c",
+                "tinyhumansai/tinydocs": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+                "tinyhumansai/tinyvoice": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
             },
         )
         self.assertEqual(
@@ -72,6 +76,8 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinywallet": "tinywallet-module",
                 "tinyhumansai/tinymcp": "tinymcp",
                 "tinyhumansai/tinychannels": "tinychannels-module",
+                "tinyhumansai/tinydocs": "tinydocs-module",
+                "tinyhumansai/tinyvoice": "tinyvoice-module",
             },
         )
         self.assertEqual(VERIFY.CHECK_APP_ID, 15368)
@@ -86,7 +92,10 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         )
         self.assertEqual(
             {repo: profile["manifest"] for repo, profile in VERIFY.MODULE_PROFILES.items()},
-            {repo: "Cargo.toml" for repo in VERIFY.MODULE_PROFILES},
+            {
+                repo: ("crates/tinyvoice-module/Cargo.toml" if repo == "tinyhumansai/tinyvoice" else "Cargo.toml")
+                for repo in VERIFY.MODULE_PROFILES
+            },
         )
         self.assertEqual(VERIFY.MODULE_PROFILES["tinyhumansai/tinywallet"]["asset"], "tinywallet-module")
         self.assertEqual(VERIFY.MODULE_PROFILES["tinyhumansai/tinywallet"]["extra_files"], [])
@@ -95,6 +104,25 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         self.assertEqual(
             VERIFY.MODULE_PROFILES["tinyhumansai/tinyjuice"]["extra_files"],
             ["docs/specs/tinybus-module.md"],
+        )
+        self.assertEqual(
+            VERIFY.MODULE_PROFILES["tinyhumansai/tinydocs"],
+            {
+                "package": "tinydocs-module", "asset": "tinydocs-module", "manifest": "Cargo.toml",
+                "extra_files": ["docs/specs/tinybus-module.md"], "workflow_id": 331024957,
+                "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+                "source_bundle": "tinydocs",
+            },
+        )
+        self.assertEqual(
+            VERIFY.MODULE_PROFILES["tinyhumansai/tinyvoice"],
+            {
+                "package": "tinyvoice-module", "asset": "tinyvoice-module",
+                "manifest": "crates/tinyvoice-module/Cargo.toml", "extra_files": [],
+                "workflow_id": 333928426,
+                "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+                "apt_packages": "libasound2-dev libx11-dev libxtst-dev libxi-dev",
+            },
         )
         self.assertEqual(
             VERIFY.MODULE_PROFILES["tinyhumansai/tinymcp"],
@@ -186,6 +214,15 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                         )
                         self.assertEqual(outputs["module-package"], package)
                         self.assertEqual(outputs["source-sha"], fake.tag_sha)
+                        profile = VERIFY.MODULE_PROFILES[repository]
+                        self.assertEqual(outputs["module-asset"], profile["asset"])
+                        self.assertEqual(outputs["module-manifest"], profile["manifest"])
+                        self.assertEqual(
+                            outputs["module-apt-packages"], profile.get("apt_packages", ""),
+                        )
+                        self.assertEqual(
+                            outputs["module-source-bundle"], profile.get("source_bundle", ""),
+                        )
 
     def test_main_rejects_explicit_package_mismatch_before_github_api_use(self):
         environment = {
@@ -663,7 +700,47 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn("include-distros", workflow)
         self.assertNotIn("extra-packaged-files", self.workflow["on"]["workflow_call"]["inputs"])
         self.assertNotIn("apt-packages", self.workflow["on"]["workflow_call"]["inputs"])
+        self.assertNotIn("module-manifest", self.workflow["on"]["workflow_call"]["inputs"])
+        self.assertNotIn("source-artifact", self.workflow["on"]["workflow_call"]["inputs"])
         self.assertIn("expected=17", workflow)
+        self.assertIn("module-source-bundle", workflow)
+        self.assertIn("needs.source_assets.result == 'success'", workflow)
+
+    def test_tinydocs_sources_are_built_after_admission_and_merged_into_release_assets(self):
+        jobs = self.workflow["jobs"]
+        self.assertIn("source_assets", jobs)
+        job = jobs["source_assets"]
+        self.assertIn("preflight", job["needs"])
+        self.assertIn("validate", job["needs"])
+        self.assertEqual(
+            job["if"],
+            "needs.preflight.outputs.module-source-bundle == 'tinydocs'",
+        )
+        checkouts = [step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")]
+        self.assertEqual(len(checkouts), 1)
+        self.assertEqual(checkouts[0]["with"]["ref"], "${{ needs.preflight.outputs.source-sha }}")
+        self.assertEqual(checkouts[0]["with"].get("persist-credentials"), "false")
+        self.assertIn("cargo package --locked --package tinydocs-bus", str(job))
+        self.assertIn("git -C vendor/tinybus archive", str(job))
+        self.assertNotIn("GH_TOKEN", str(job))
+
+        assemble = jobs["assemble"]
+        self.assertIn("source_assets", assemble["needs"])
+        self.assertIn("module-assets", str(assemble))
+        self.assertIn("tinydocs-source-assets", str(assemble))
+        self.assertIn("merge-reviewed-source-assets.py", str(assemble))
+        self.assertIn("checksum", str(assemble))
+
+    def test_tinyvoice_profile_uses_exact_nested_manifest_and_all_native_dependencies(self):
+        workflow = (ROOT / ".github/workflows/module-reviewed-epic-release.yml").read_text()
+        validate = self.workflow["jobs"]["validate"]
+        native = self.workflow["jobs"]["native"]
+        distro = self.workflow["jobs"]["distro"]
+        self.assertIn("crates/tinyvoice-module/Cargo.toml", str(validate))
+        self.assertIn("MODULE_APT_PACKAGES", str(native))
+        self.assertIn("libasound2-dev libx11-dev libxtst-dev libxi-dev", str(native))
+        self.assertIn("scripts/test-distro.sh", str(distro))
+        self.assertIn("install-distro-packages.sh", str(workflow))
 
 
 if __name__ == "__main__":
