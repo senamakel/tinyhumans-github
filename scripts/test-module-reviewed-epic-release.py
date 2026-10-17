@@ -4,14 +4,17 @@ from __future__ import annotations
 
 import importlib.util
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 
 import yaml
@@ -823,8 +826,22 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
                      for item in self.workflow["jobs"][job_name]["strategy"]["matrix"]["include"]]
             for host in hosts:
                 extension = "zip" if host.startswith("windows-") else "tar.gz"
-                (release / f"tinydocs-module-0.2.4-{host}.{extension}").write_bytes(b"module")
-            (release / "tinybus-source-0123456789ab.tar.gz").write_bytes(b"pinned source")
+                archive = release / f"tinydocs-module-0.2.4-{host}.{extension}"
+                if extension == "zip":
+                    with zipfile.ZipFile(archive, "w") as bundle:
+                        bundle.writestr("tinyjuice_module.dll", b"module library")
+                else:
+                    with tarfile.open(archive, "w:gz") as bundle:
+                        library = b"module library"
+                        entry = tarfile.TarInfo("libtinyjuice_module.so")
+                        entry.size = len(library)
+                        bundle.addfile(entry, io.BytesIO(library))
+            source_archive = release / "tinybus-source-0123456789ab.tar.gz"
+            with tarfile.open(source_archive, "w:gz") as bundle:
+                source = b"[package]\\nname = \\\"tinybus\\\"\\n"
+                entry = tarfile.TarInfo("tinybus/Cargo.toml")
+                entry.size = len(source)
+                bundle.addfile(entry, io.BytesIO(source))
             (release / "tinydocs-bus-0.2.4.crate").write_bytes(b"bus crate")
             fake_bin = Path(root) / "bin"
             fake_bin.mkdir()
@@ -839,6 +856,21 @@ args = sys.argv[1:]
 paths = [args[index + 1] for index, value in enumerate(args[:-1]) if value == "--path"]
 output = Path(args[args.index("--output") + 1])
 Path({str(capture)!r}).write_text("\\n".join(args))
+import tarfile
+import zipfile
+for path in paths:
+    asset = Path(path)
+    if asset.name.endswith(".tar.gz"):
+        with tarfile.open(asset, "r:gz") as archive:
+            members = archive.getnames()
+    elif asset.name.endswith(".zip"):
+        with zipfile.ZipFile(asset) as archive:
+            members = archive.namelist()
+    else:
+        members = []
+    if asset.name.endswith((".tar.gz", ".zip")) and not any(name.endswith((".so", ".dylib", ".dll")) for name in members):
+        print(f"{{asset.name}}: release archive contains no platform module", file=sys.stderr)
+        raise SystemExit(1)
 lines = ["[sha256]"]
 for path in paths:
     asset = Path(path)
@@ -854,7 +886,9 @@ output.write_text("\\n".join(lines) + "\\n")
                                     text=True, capture_output=True)
             self.assertEqual(result.returncode, 0, result.stderr)
             args = capture.read_text().splitlines()
-            self.assertEqual(args.count("--path"), 19)
+            self.assertEqual(args.count("--path"), 17)
+            self.assertNotIn("release-assets/tinydocs-bus-0.2.4.crate", args)
+            self.assertNotIn("release-assets/tinybus-source-0123456789ab.tar.gz", args)
             self.assertIn("release-assets/tinydocs-bus-0.2.4.crate", args)
             self.assertIn("release-assets/tinybus-source-0123456789ab.tar.gz", args)
             manifest = (release / "checksum.toml").read_text()
