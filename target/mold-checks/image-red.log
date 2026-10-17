@@ -1,0 +1,41 @@
+rustc 1.99.1 (58cf8f9c3 2026-10-13)
+rustc 1.96.1 (31fca3adb 2026-06-26)
+rustc 1.96.1 (31fca3adb 2026-06-26)
+clippy 0.1.99 (58cf8f9c35 2026-10-13)
+rustfmt 1.10.0-stable (58cf8f9c35 2026-10-13)
+clippy 0.1.96 (31fca3adb2 2026-06-26)
+rustfmt 1.9.0-stable (31fca3adb2 2026-06-26)
+cargo-llvm-cov 0.9.1
+cargo-deny 0.20.2
+cargo-nextest 0.9.148 (cd1d6d546 2026-10-07)
+release: 0.9.148
+commit-hash: cd1d6d5467322dbc0d39a80cb671d000ac302798
+commit-date: 2026-10-07
+host: x86_64-unknown-linux-gnu
+tinymold 0.3.0
+sccache 0.18.0
+db version v7.0.45
+2.13.0
+mold 1.0.3 (compatible with GNU ld)
+jq-1.6
+v24.22.0
+10.10.0
+patchelf 0.14.3
+USAGE: tauri-driver [FLAGS] [OPTIONS]
+
+FLAGS:
+  -h, --help              Prints help information
+
+OPTIONS:
+  --port NUMBER           Sets the tauri-driver intermediary port
+  --native-port NUMBER    Sets the port of the underlying WebDriver
+  --native-host HOST      Sets the host of the underlying WebDriver (Linux only)
+  --native-driver PATH    Sets the path to the native WebDriver binary
+
+Usage: WebKitWebDriver options
+  -h,          --help             Prints this help message
+  -p <port>,   --port=<port>      Port number the driver will use
+               --host=<host>      Host IP the driver will use, or either 'local' or 'all' (default: 'local')
+  -t <ip:port> --target=<ip:port> Target IP and port
+               --replace-on-new-session  Replace the existing session on new session request
+/smoke.sh: line 37: CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER: mold must be the default Cargo linker
