@@ -675,6 +675,8 @@ def reviewed_release_fixture(verifier):
     fake.reviews = api.reviews
     fake.threads = api.threads
     fake.checks = api.checks
+    fake.workflow_runs = api.workflow_runs
+    fake.workflow_jobs = api.workflow_jobs
     fake.checked_heads = api.checked_heads
     return fake
 
