@@ -830,7 +830,7 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
     def test_source_checksums_stay_in_sha256_table_when_library_table_is_present(self):
         assemble = self.workflow["jobs"]["assemble"]
         step = next(step for step in assemble["steps"] if "Checksum the exact module and source asset set" in step.get("name", ""))
-        match = re.search(r"(?s)python3 - .*? <<'PYTHON'\n(.*?)\nPYTHON\s*$", step["run"])
+        match = re.search(r"(?s)python3 - .*? <<'PYTHON'\n(.*?)\nPYTHON\s*\n\s*fi\s*$", step["run"])
         self.assertIsNotNone(match, "source manifest writer must be a TOML-aware inline helper")
         namespace = {"__name__": "source_manifest_writer_test"}
         exec(compile(match.group(1), "source-manifest-writer", "exec"), namespace)
