@@ -1,6 +1,7 @@
 """Pin the privilege boundary and retry behavior of the SDK release workflow."""
 from pathlib import Path
 import importlib.util
+import subprocess
 import unittest
 
 import yaml
@@ -135,6 +136,23 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
         self.assertGreaterEqual(len(action_uses), 2)
         for uses in action_uses:
             self.assertRegex(uses, r"^tinyhumansai/\.github/.github/actions/sdk-reviewed-epic-preflight@[0-9a-f]{40}$")
+        action_sha = action_uses[0].rsplit("@", 1)[1]
+        self.assertEqual(set(action_uses), {
+            f"tinyhumansai/.github/.github/actions/sdk-reviewed-epic-preflight@{action_sha}"
+        })
+        root = Path(__file__).parents[1]
+        for relative in (
+            ".github/actions/sdk-reviewed-epic-preflight/action.yml",
+            ".github/actions/sdk-reviewed-epic-preflight/verify.py",
+        ):
+            pinned = subprocess.run(
+                ["git", "show", f"{action_sha}:{relative}"],
+                cwd=root,
+                capture_output=True,
+                check=False,
+            )
+            self.assertEqual(pinned.returncode, 0, f"action pin does not contain {relative}")
+            self.assertEqual(pinned.stdout, (root / relative).read_bytes(), relative)
 
     def test_legacy_entrypoint_permissions_and_package_publish_logic_are_unchanged(self):
         self.assertEqual(
