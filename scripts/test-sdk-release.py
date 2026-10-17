@@ -290,6 +290,22 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
                 "0.1.7", "tinybus", 75,
             )
 
+        fake = reviewed_release_fixture(self.verify)
+        fake.checks[fake.heads[72]][0]["conclusion"] = "failure"
+        with self.assertRaisesRegex(self.verify.VerificationError, "not successful"):
+            self.verify.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
+                "0.1.7", "tinybus", 75,
+            )
+
+        fake = reviewed_release_fixture(self.verify)
+        fake.checks[fake.heads[74]].pop()
+        with self.assertRaisesRegex(self.verify.VerificationError, "trusted CI check"):
+            self.verify.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
+                "0.1.7", "tinybus", 75,
+            )
+
     def test_required_checks_must_share_one_canonical_pull_request_run(self):
         fake = reviewed_release_fixture(self.verify)
         fake.workflow_runs[fake.heads[72]][0]["repository"] = {
