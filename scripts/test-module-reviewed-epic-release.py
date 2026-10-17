@@ -898,6 +898,13 @@ output.write_text("\\n".join(lines) + "\\n")
                 f'"tinybus-source-0123456789ab.tar.gz" = "{hashlib.sha256(b"pinned source").hexdigest()}"',
                 manifest,
             )
+            for host in hosts:
+                extension = "zip" if host.startswith("windows-") else "tar.gz"
+                asset = release / f"tinydocs-module-0.2.4-{host}.{extension}"
+                self.assertIn(
+                    f'"{asset.name}" = "{hashlib.sha256(asset.read_bytes()).hexdigest()}"',
+                    manifest,
+                )
             self.assertEqual(manifest.count(" = "), 19)
 
             module_archive = next(release.glob("tinydocs-module-*.tar.gz"))

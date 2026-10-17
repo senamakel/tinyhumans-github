@@ -478,10 +478,20 @@ jobs:
             exit 2
           fi
           checksum_args=()
-          for archive in "${module_archives[@]}" "${source_assets[@]}"; do
+          for archive in "${module_archives[@]}"; do
             checksum_args+=(--path "$archive")
           done
           cargo run --locked --manifest-path vendor/tinybus/Cargo.toml --features cli --bin tinybus -- modules checksum "${checksum_args[@]}" --output release-assets/checksum.toml
+          if [[ "$MODULE_SOURCE_BUNDLE" == "tinydocs" ]]; then
+            for asset in "${source_assets[@]}"; do
+              digest="$(sha256sum -- "$asset" | awk '{print $1}')"
+              [[ "$digest" =~ ^[0-9a-f]{64}$ ]] || {
+                echo "TinyDocs source asset digest is invalid: $asset" >&2
+                exit 1
+              }
+              printf '"%s" = "%s"\n' "$(basename "$asset")" "$digest" >> release-assets/checksum.toml
+            done
+          fi
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: module-release-assets
