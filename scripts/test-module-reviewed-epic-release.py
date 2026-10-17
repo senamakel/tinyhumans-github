@@ -374,6 +374,12 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
             "actions/checkout" not in step.get("uses", "")
             for step in jobs["preflight"]["steps"]
         ))
+        verifier_step = jobs["preflight"]["steps"][0]
+        self.assertEqual(
+            set(verifier_step["with"]),
+            {"token", "tag", "version", "reviewed-pr"},
+        )
+        self.assertNotIn("package", verifier_step["with"])
         source_jobs = ("validate", "native", "distro", "assemble")
         for name in source_jobs:
             with self.subTest(job=name):
