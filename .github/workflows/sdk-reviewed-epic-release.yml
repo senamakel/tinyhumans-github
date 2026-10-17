@@ -28,6 +28,7 @@ jobs:
       contents: read
       pull-requests: read
       checks: read
+      actions: read
     steps:
       - id: verify
         uses: tinyhumansai/.github/.github/actions/sdk-reviewed-epic-preflight@a3418bdbb12f681e1274446c46949d6a4a36d48f

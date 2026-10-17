@@ -104,7 +104,7 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
         self.assertEqual(set(jobs), {"preflight", "package", "publish"})
         self.assertEqual(
             jobs["preflight"]["permissions"],
-            {"contents": "read", "pull-requests": "read", "checks": "read"},
+            {"contents": "read", "pull-requests": "read", "checks": "read", "actions": "read"},
         )
         package = "\n".join(str(step) for step in jobs["package"]["steps"])
         self.assertIn("needs.preflight.outputs.source-sha", package)
@@ -350,14 +350,7 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
             )
 
         fake = reviewed_release_fixture(self.verify)
-        fake.checks[fake.heads[72]].append({
-            "name": self.verify.REQUIRED_CHECKS[0],
-            "app": {"id": self.verify.CHECK_APP_ID},
-            "status": "completed",
-            "conclusion": "failure",
-            "started_at": "2026-10-18T12:00:00Z",
-            "id": 999,
-        })
+        fake.checks[fake.heads[72]][0]["conclusion"] = "failure"
         with self.assertRaisesRegex(self.verify.VerificationError, "not successful"):
             self.verify.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
@@ -580,7 +573,11 @@ def reviewed_release_fixture(verifier):
                 "ref": "epic/8056-modules-wiring",
                 "repo": {"full_name": "tinyhumansai/tinybus"},
             },
-            "head": {"sha": heads[number]},
+            "head": {
+                "sha": heads[number],
+                "ref": "feature",
+                "repo": {"full_name": "senamakel/tinybus"},
+            },
             "user": {"login": "author"},
         }
         api.reviews[number] = [
@@ -616,7 +613,7 @@ def reviewed_release_fixture(verifier):
             "conclusion": "success",
             "head_sha": heads[number],
             "head_branch": "feature",
-            "head_repository": {"full_name": "tinyhumansai/tinybus"},
+            "head_repository": {"full_name": "senamakel/tinybus"},
             "repository": {"full_name": "tinyhumansai/tinybus"},
             "pull_requests": [{"number": number}],
             "run_number": 100 + number,

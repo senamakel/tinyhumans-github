@@ -102,7 +102,10 @@ class GitHubApi:
             if not isinstance(nodes, list) or not isinstance(page_info, dict):
                 raise VerificationError("GitHub GraphQL response was malformed")
             results.extend(nodes)
-            if not page_info.get("hasNextPage"):
+            has_next_page = page_info.get("hasNextPage")
+            if not isinstance(has_next_page, bool):
+                raise VerificationError("GitHub GraphQL pageInfo was incomplete")
+            if not has_next_page:
                 return results
             cursor = page_info.get("endCursor")
             if not isinstance(cursor, str) or not cursor:
@@ -126,6 +129,8 @@ class GitHubApi:
 
     def main_sha(self) -> str:
         response = self._request(f"repos/{self.repository}/branches/main")
+        if not isinstance(response, dict) or response.get("protected") is not True:
+            raise VerificationError("canonical main branch protection could not be proven")
         try:
             return _sha(response["commit"]["sha"], "main branch")
         except (KeyError, TypeError) as error:
@@ -164,6 +169,18 @@ class GitHubApi:
         return self.rest_pages(
             f"repos/{self.repository}/commits/{commit}/check-runs",
             collection="check_runs",
+        )
+
+    def workflow_runs_for_commit(self, commit: str) -> list:
+        return self.rest_pages(
+            f"repos/{self.repository}/actions/runs?head_sha={commit}",
+            collection="workflow_runs",
+        )
+
+    def jobs_for_workflow_run(self, run_id: int, attempt: int) -> list:
+        return self.rest_pages(
+            f"repos/{self.repository}/actions/runs/{run_id}/attempts/{attempt}/jobs",
+            collection="jobs",
         )
 
 
@@ -337,6 +354,7 @@ def _validate_pull(pull: dict, repository: str, merge_sha: str) -> dict:
     return {
         "number": number,
         "head_sha": _sha(head.get("sha"), "pull request head"),
+        "head_repository": (head.get("repo") or {}).get("full_name"),
         "author": author.get("login"),
     }
 
@@ -366,11 +384,58 @@ def _verify_review_threads(api, pull: dict) -> None:
 
 def _verify_required_checks(api, pull: dict) -> None:
     runs = api.check_runs_for_commit(pull["head_sha"])
+    workflow_runs = api.workflow_runs_for_commit(pull["head_sha"])
+    canonical_runs = [
+        run for run in workflow_runs
+        if isinstance(run, dict)
+        and run.get("path", "").split("@", 1)[0] == ".github/workflows/ci.yml"
+        and run.get("event") == "pull_request"
+        and run.get("head_sha") == pull["head_sha"]
+        and (run.get("repository") or {}).get("full_name") == CANONICAL_REPO
+        and (run.get("head_repository") or {}).get("full_name") == pull["head_repository"]
+        and isinstance(run.get("id"), int)
+        and isinstance(run.get("run_number"), int)
+        and isinstance(run.get("run_attempt"), int)
+        and run.get("check_suite_id") is not None
+    ]
+    if not canonical_runs:
+        raise VerificationError("canonical CI workflow run could not be proven for the pull request head")
+    workflow_run = max(
+        canonical_runs,
+        key=lambda run: (run["run_number"], run["run_attempt"], run["id"]),
+    )
+    if workflow_run.get("status") != "completed" or workflow_run.get("conclusion") != "success":
+        raise VerificationError("latest canonical CI workflow run is not successful")
+
+    jobs = api.jobs_for_workflow_run(workflow_run["id"], workflow_run["run_attempt"])
+    job_by_name = {}
+    for job in jobs:
+        name = job.get("name") if isinstance(job, dict) else None
+        if name in REQUIRED_CHECKS:
+            if name in job_by_name:
+                raise VerificationError(f"canonical CI job is duplicated: {name}")
+            job_by_name[name] = job
+
     for required in REQUIRED_CHECKS:
+        job = job_by_name.get(required)
+        if job is None:
+            raise VerificationError(f"trusted CI check is missing from canonical workflow run: {required}")
+        if (
+            job.get("run_id") != workflow_run["id"]
+            or job.get("run_attempt") != workflow_run["run_attempt"]
+            or job.get("head_sha") != pull["head_sha"]
+            or job.get("status") != "completed"
+            or job.get("conclusion") != "success"
+        ):
+            raise VerificationError(f"canonical CI job is not successful: {required}")
+        check_run_id = _check_run_id(job.get("check_run_url"))
         matching = [
             run for run in runs
             if run.get("name") == required
             and (run.get("app") or {}).get("id") == CHECK_APP_ID
+            and run.get("id") == check_run_id
+            and run.get("head_sha") == pull["head_sha"]
+            and ((run.get("check_suite") or {}).get("id") == workflow_run["check_suite_id"])
         ]
         if not matching:
             raise VerificationError(f"trusted CI check is missing: {required}")
@@ -380,6 +445,18 @@ def _verify_required_checks(api, pull: dict) -> None:
         )
         if latest.get("status") != "completed" or latest.get("conclusion") != "success":
             raise VerificationError(f"trusted CI check is not successful: {required}")
+
+
+def _check_run_id(value) -> int:
+    if not isinstance(value, str):
+        raise VerificationError("canonical CI job did not identify its check run")
+    match = re.fullmatch(
+        r"https://api\.github\.com/repos/tinyhumansai/tinybus/check-runs/([0-9]+)",
+        value,
+    )
+    if match is None:
+        raise VerificationError("canonical CI job check-run URL was invalid")
+    return int(match.group(1))
 
 
 def _sha(value, label: str) -> str:
