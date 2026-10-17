@@ -28,6 +28,8 @@ jobs:
       module-asset: ${{ steps.verify.outputs.module-asset }}
       module-manifest: ${{ steps.verify.outputs.module-manifest }}
       extra-packaged-files: ${{ steps.verify.outputs.extra-packaged-files }}
+      module-apt-packages: ${{ steps.verify.outputs.module-apt-packages }}
+      module-source-bundle: ${{ steps.verify.outputs.module-source-bundle }}
     permissions:
       contents: read
       pull-requests: read
@@ -61,13 +63,32 @@ jobs:
           MODULE_CRATE: ${{ needs.preflight.outputs.module-package }}
           MODULE_ASSET: ${{ needs.preflight.outputs.module-asset }}
           MODULE_MANIFEST: ${{ needs.preflight.outputs.module-manifest }}
+          MODULE_APT_PACKAGES: ${{ needs.preflight.outputs.module-apt-packages }}
+          MODULE_SOURCE_BUNDLE: ${{ needs.preflight.outputs.module-source-bundle }}
           EXTRA_PACKAGED_FILES: ${{ needs.preflight.outputs.extra-packaged-files }}
         run: |
           set -euo pipefail
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
           [[ "$MODULE_CRATE" =~ ^[A-Za-z0-9_-]+$ ]]
           [[ "$MODULE_ASSET" =~ ^[A-Za-z0-9_-]+$ ]]
-          [[ "$MODULE_MANIFEST" == "Cargo.toml" ]]
+          case "$MODULE_CRATE:$MODULE_MANIFEST" in
+            tinyconnectors:Cargo.toml|tinybox-module:Cargo.toml|tinyjuice-module:Cargo.toml|tinywallet-module:Cargo.toml|tinymcp:Cargo.toml|tinychannels-module:Cargo.toml|tinydocs-module:Cargo.toml|tinyvoice-module:crates/tinyvoice-module/Cargo.toml) ;;
+            *) echo "module package and manifest are outside the compiled-in profile" >&2; exit 2 ;;
+          esac
+          case "$MODULE_APT_PACKAGES" in
+            ""|"libasound2-dev libx11-dev libxtst-dev libxi-dev") ;;
+            *) echo "Ubuntu build dependencies are outside the compiled-in profile" >&2; exit 2 ;;
+          esac
+          case "$MODULE_SOURCE_BUNDLE" in
+            "") ;;
+            tinydocs)
+              [[ "$MODULE_CRATE:$MODULE_MANIFEST" == "tinydocs-module:Cargo.toml" ]] || {
+                echo "TinyDocs source bundle does not match its module profile" >&2
+                exit 2
+              }
+              ;;
+            *) echo "source bundle is outside the compiled-in profile" >&2; exit 2 ;;
+          esac
           jq -e 'type == "array" and all(.[]; type == "string")' <<<"$EXTRA_PACKAGED_FILES" >/dev/null
           required=(scripts/build-module.sh scripts/build-module.ps1 scripts/verify-module.sh scripts/verify-module.ps1 scripts/test-distro.sh)
           for script in "${required[@]}"; do
@@ -82,6 +103,13 @@ jobs:
             echo "module crate $MODULE_CRATE is version ${module_version:-missing}, expected $VERSION" >&2
             exit 1
           }
+          if [[ "$MODULE_SOURCE_BUNDLE" == "tinydocs" ]]; then
+            source_version=$(jq -r '[.packages[] | select(.name == "tinydocs-bus") | .version] | if length == 1 then .[0] else "" end' <<<"$metadata")
+            [[ "$source_version" == "$VERSION" ]] || {
+              echo "TinyDocs source package tinydocs-bus is version ${source_version:-missing}, expected $VERSION" >&2
+              exit 1
+            }
+          fi
 
   native:
     name: verify and package (${{ matrix.host }})
@@ -136,6 +164,19 @@ jobs:
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           key: ${{ matrix.host }}
+      - if: runner.os == 'Linux' && needs.preflight.outputs.module-apt-packages != ''
+        shell: bash
+        env:
+          MODULE_APT_PACKAGES: ${{ needs.preflight.outputs.module-apt-packages }}
+        run: |
+          set -euo pipefail
+          [[ "$MODULE_APT_PACKAGES" =~ ^[a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?([ ][a-z0-9][a-z0-9+.-]*(:[a-z0-9][a-z0-9-]*)?)*$ ]] || {
+            echo "compiled-in apt package list is invalid" >&2
+            exit 2
+          }
+          read -r -a packages <<< "$MODULE_APT_PACKAGES"
+          sudo apt-get update
+          sudo apt-get install --yes "${packages[@]}"
       - name: Build module package
         if: runner.os != 'Windows'
         shell: bash
@@ -233,13 +274,61 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  source_assets:
+    name: build reviewed TinyDocs source assets
+    if: needs.preflight.outputs.module-source-bundle == 'tinydocs'
+    needs: [preflight, validate]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.preflight.outputs.source-sha }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - name: Package the allowlisted TinyDocs bus crate and pinned TinyBus source
+        shell: bash
+        env:
+          MODULE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          cargo package --locked --package tinydocs-bus
+          package_archive="target/package/tinydocs-bus-${MODULE_VERSION}.crate"
+          [[ -f "$package_archive" && ! -L "$package_archive" ]] || {
+            echo "TinyDocs source crate is missing: $package_archive" >&2
+            exit 1
+          }
+          revision="$(git -C vendor/tinybus rev-parse --short=12 HEAD)"
+          [[ "$revision" =~ ^[0-9a-f]{12}$ ]] || {
+            echo "pinned TinyBus source revision is invalid" >&2
+            exit 1
+          }
+          mkdir -p source-assets
+          cp "$package_archive" source-assets/
+          git -C vendor/tinybus archive --format=tar.gz --prefix="tinybus-${revision}/" \
+            --output="$PWD/source-assets/tinybus-source-${revision}.tar.gz" HEAD
+          shopt -s nullglob
+          assets=(source-assets/*)
+          [[ "${#assets[@]}" -eq 2 && -f "${assets[0]}" && ! -L "${assets[0]}" && -f "${assets[1]}" && ! -L "${assets[1]}" ]] || {
+            echo "TinyDocs source job emitted an unexpected asset set" >&2
+            exit 1
+          }
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: tinydocs-source-assets
+          path: source-assets/*
+          if-no-files-found: error
+          retention-days: 1
+
   assemble:
     name: assemble release assets
-    needs: [preflight, validate, native, distro]
+    needs: [preflight, validate, native, distro, source_assets]
     if: >-
       always() && needs.preflight.result == 'success' &&
       needs.validate.result == 'success' && needs.native.result == 'success' &&
-      needs.distro.result == 'success'
+      needs.distro.result == 'success' &&
+      (needs.preflight.outputs.module-source-bundle != 'tinydocs' ||
+       needs.source_assets.result == 'success')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -256,10 +345,13 @@ jobs:
           merge-multiple: true
       - name: Require the complete archive set and create checksum manifest
         shell: bash
+        env:
+          MODULE_ASSET: ${{ needs.preflight.outputs.module-asset }}
+          MODULE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
           shopt -s nullglob
-          archives=(release-assets/*.tar.gz release-assets/*.zip)
+          archives=(release-assets/${MODULE_ASSET}-${MODULE_VERSION}-*.tar.gz release-assets/${MODULE_ASSET}-${MODULE_VERSION}-*.zip)
           expected=17
           if [[ "${#archives[@]}" -ne "$expected" ]]; then
             echo "expected $expected module archives, found ${#archives[@]}" >&2
@@ -268,6 +360,17 @@ jobs:
           checksum_args=()
           for archive in "${archives[@]}"; do checksum_args+=(--path "$archive"); done
           cargo run --locked --manifest-path vendor/tinybus/Cargo.toml --features cli --bin tinybus -- modules checksum "${checksum_args[@]}" --output release-assets/checksum.toml
+      - if: needs.preflight.outputs.module-source-bundle == 'tinydocs'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: tinydocs-source-assets
+          path: source-assets
+      - if: needs.preflight.outputs.module-source-bundle == 'tinydocs'
+        name: Merge the exact reviewed TinyDocs source bundle
+        shell: bash
+        env:
+          MODULE_VERSION: ${{ inputs.version }}
+        run: python3 scripts/merge-reviewed-source-assets.py --bundle tinydocs --version "$MODULE_VERSION" --source source-assets --destination release-assets
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: module-release-assets

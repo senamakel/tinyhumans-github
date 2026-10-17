@@ -48,7 +48,7 @@ class SourceAssetsTests(unittest.TestCase):
             reviewed_module.merge("tinydocs", "0.2.4", source, dest)
             self.assertEqual(
                 sorted(path.name for path in dest.iterdir()),
-                ["tinydocs-bus-0.2.4.crate", "tinybus-source-0123456789ab.tar.gz"],
+                ["tinybus-source-0123456789ab.tar.gz", "tinydocs-bus-0.2.4.crate"],
             )
             self.assertEqual((dest/"tinydocs-bus-0.2.4.crate").read_bytes(), b"crate")
             self.assertEqual((dest/"tinybus-source-0123456789ab.tar.gz").read_bytes(), b"bus source")
@@ -74,7 +74,7 @@ class SourceAssetsTests(unittest.TestCase):
             source.mkdir(); dest.mkdir()
             (source/"tinydocs-bus-0.2.4.crate").write_bytes(b"crate")
             (source/"tinybus-source-0123456789ab.tar.gz").symlink_to(source/"tinydocs-bus-0.2.4.crate")
-            with self.assertRaisesRegex(ValueError, "regular files"):
+            with self.assertRaisesRegex(ValueError, "exact source asset set"):
                 reviewed_module.merge("tinydocs", "0.2.4", source, dest)
             (source/"tinybus-source-0123456789ab.tar.gz").unlink()
             (source/"tinybus-source-0123456789ab.tar.gz").write_bytes(b"bus source")
