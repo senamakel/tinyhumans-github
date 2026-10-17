@@ -15,6 +15,7 @@ def reviewed_release_fixture(verifier):
             self.workflow_jobs = {}
             self.logs = {}
             self.parents_by_sha = {}
+            self.commit_records = {}
 
         def tag_commit(self, tag):
             return self.tags[tag]
@@ -44,10 +45,16 @@ def reviewed_release_fixture(verifier):
             return self.workflow_jobs[(run_id, attempt)]
 
         def job_logs(self, job_id):
-            return self.logs[job_id].encode()
+            try:
+                return self.logs[job_id].encode()
+            except KeyError as error:
+                raise verifier.VerificationError("canonical fmt job logs could not be downloaded") from error
 
         def commit_parents(self, commit):
             return self.parents_by_sha[commit]
+
+        def commit_details(self, commit):
+            return self.commit_records[commit]
 
     class Git:
         def __init__(self, parents):
@@ -167,6 +174,9 @@ def reviewed_release_fixture(verifier):
         synthetic = sha(80 + number)
         api.parents_by_sha[synthetic] = parents[merge]
         api.parents_by_sha[merge] = parents[merge]
+        tree = sha(120 + number)
+        api.commit_records[synthetic] = {"tree_sha": tree, "parents": parents[merge]}
+        api.commit_records[merge] = {"tree_sha": tree, "parents": parents[merge]}
         api.logs[run_id + 2000] = _fmt_job_log(synthetic, number)
     api.reviews[74] = [
         {
@@ -207,6 +217,7 @@ def reviewed_release_fixture(verifier):
     fake.checks = api.checks
     fake.workflow_runs = api.workflow_runs
     fake.workflow_jobs = api.workflow_jobs
+    fake.commit_records = api.commit_records
     fake.checked_heads = api.checked_heads
     return fake
 

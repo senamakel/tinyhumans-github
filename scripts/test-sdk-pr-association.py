@@ -7,6 +7,7 @@ import unittest
 from unittest.mock import patch
 import urllib.error
 import zipfile
+from copy import deepcopy
 
 
 ROOT = Path(__file__).parents[1]
@@ -86,6 +87,73 @@ class WorkflowPullAssociationTests(unittest.TestCase):
                 self.verify.verify.VerificationError, "workflow run pull request"
             ):
                 self.run_verification()
+
+    def test_same_merge_parents_with_a_different_tested_tree_are_rejected(self):
+        fake = base_tests.reviewed_release_fixture(self.verify.verify)
+        synthetic = base_tests.sha(80 + 75)
+        fake.api.commit_records[synthetic]["tree_sha"] = base_tests.sha(201)
+        self.fake = fake
+        with self.assertRaisesRegex(self.verify.verify.VerificationError, "tree"):
+            self.run_verification()
+
+    def test_newer_empty_association_proven_for_another_pr_is_excluded(self):
+        for conclusion in ("success", "failure"):
+            fake = base_tests.reviewed_release_fixture(self.verify.verify)
+            fake.workflow_runs[fake.heads[75]][0]["pull_requests"] = []
+            self._append_empty_run(fake, 75, pr_number=999, run_number=999, conclusion=conclusion)
+            self.fake = fake
+            with self.subTest(conclusion=conclusion):
+                self.assertEqual(self.run_verification(), fake.tag_sha)
+
+    def test_newer_empty_association_proven_for_the_reviewed_pr_cannot_be_skipped(self):
+        for status, conclusion in (("completed", "failure"), ("in_progress", None)):
+            fake = base_tests.reviewed_release_fixture(self.verify.verify)
+            self._append_empty_run(
+                fake, 75, pr_number=75, run_number=999, status=status, conclusion=conclusion
+            )
+            self.fake = fake
+            with self.subTest(status=status, conclusion=conclusion), self.assertRaisesRegex(
+                self.verify.verify.VerificationError, "latest canonical CI workflow run is not successful"
+            ):
+                self.run_verification()
+
+    def test_newer_empty_association_without_checkout_logs_blocks_older_green_run(self):
+        fake = base_tests.reviewed_release_fixture(self.verify.verify)
+        run = self._append_empty_run(fake, 75, pr_number=999, run_number=999, logs=False)
+        fmt_job = fake.workflow_jobs[(run["id"], run["run_attempt"])][0]
+        fake.api.logs.pop(fmt_job["id"], None)
+        self.fake = fake
+        with self.assertRaisesRegex(self.verify.verify.VerificationError, "job logs|job log"):
+            self.run_verification()
+
+    def _append_empty_run(self, fake, source_pr, *, pr_number, run_number, status="completed",
+                          conclusion="success", logs=True):
+        head = fake.heads[source_pr]
+        source = deepcopy(fake.workflow_runs[head][0])
+        original_run_id = source["id"]
+        run_id = 50_000 + run_number
+        source.update(
+            id=run_id,
+            run_number=run_number,
+            status=status,
+            conclusion=conclusion,
+            pull_requests=[],
+        )
+        fake.workflow_runs[head].append(source)
+        jobs = deepcopy(fake.workflow_jobs[(original_run_id, source["run_attempt"])])
+        for index, job in enumerate(jobs):
+            job.update(id=run_id + 2000 + index, run_id=run_id)
+        fake.workflow_jobs[(run_id, source["run_attempt"])] = jobs
+        synthetic = base_tests.sha(250 + run_number)
+        parents = (base_tests.sha(240 + run_number), source["head_sha"])
+        fake.api.parents_by_sha[synthetic] = parents
+        fake.api.commit_records[synthetic] = {
+            "tree_sha": base_tests.sha(200 + run_number),
+            "parents": parents,
+        }
+        if logs:
+            fake.api.logs[jobs[0]["id"]] = valid_checkout_log(synthetic, pr_number)
+        return source
 
     def test_exact_pr_number_with_wrong_base_or_head_binding_is_rejected(self):
         mutations = (
