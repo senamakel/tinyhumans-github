@@ -10,7 +10,7 @@ command:
 | Rust | `stable` (1.99.1) with rustfmt, clippy, llvm-tools; `1.96` (MSRV) |
 | cargo-llvm-cov, cargo-deny | 0.9.1, 0.20.2 |
 | cargo-nextest | 0.9.148 |
-| tinymold | 0.2.4 |
+| tinymold | 0.3.0 |
 | MongoDB server, mongosh | 7.0.45, latest 2.x |
 | mold, clang, cmake, libssl-dev, pkg-config, jq, git | Ubuntu's |
 

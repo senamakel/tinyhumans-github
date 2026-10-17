@@ -56,8 +56,8 @@ ARG CARGO_DENY_VERSION=0.20.2
 ARG CARGO_DENY_SHA256=9f12ed4c49936e09b48bf862b595cde2fe64fcbd9d74dfacac6131ca824c8d5f
 ARG CARGO_NEXTEST_VERSION=0.9.148
 ARG CARGO_NEXTEST_SHA256=223ba936714cc861a9cdedad5a8eb664dfdd69d6fbdf6cea6aa8184f523290dc
-ARG TINYMOLD_VERSION=0.2.4
-ARG TINYMOLD_SHA256=b005b0f8b9b63f789fafc649fb7054cc962924257ba6f138041b10efc1a3717c
+ARG TINYMOLD_VERSION=0.3.0
+ARG TINYMOLD_SHA256=3268dc5ef2f9ab75f5a36fde29142e289a2a9e33440fc788802da99f1be41193
 RUN set -eu; dl="$(mktemp -d)"; \
     fetch() { curl -fsSL --retry 3 -o "${dl}/$1" "$2" && echo "$3  ${dl}/$1" | sha256sum -c --quiet -; }; \
     fetch llvm-cov.tgz "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v${CARGO_LLVM_COV_VERSION}/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz" "${CARGO_LLVM_COV_SHA256}"; \
