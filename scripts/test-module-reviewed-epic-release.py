@@ -243,6 +243,20 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                             package, 75,
                         )
 
+        repository = "tinyhumansai/tinyjuice"
+        package = VERIFY.MODULE_PACKAGES[repository]
+        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+        run = fake.api.workflow_runs[fake.heads[75]][0]
+        fmt_job = fake.api.workflow_jobs[(run["id"], run["run_attempt"])][0]
+        fake.api.logs[fmt_job["id"]] = fake.api.logs[fmt_job["id"]].replace(
+            VERIFY.MODULE_PROFILES[repository]["module_ci_sha"],
+            "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+        )
+        with self.assertRaisesRegex(VERIFY.VerificationError, "pinned reusable workflow"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            )
+
     def test_wrong_epic_base_and_false_merge_association_fail_closed(self):
         repository = "tinyhumansai/tinyconnectors"
         package = VERIFY.MODULE_PACKAGES[repository]
