@@ -35,7 +35,7 @@ jobs:
       actions: read
     steps:
       - id: verify
-        uses: tinyhumansai/.github/.github/actions/module-reviewed-epic-preflight@2082aee077bbd16a500869fae514834f22cde2cd
+        uses: tinyhumansai/.github/.github/actions/module-reviewed-epic-preflight@51a877c3b2ae625e1a452cf65ed4149f606bc5ba
         with:
           token: ${{ github.token }}
           tag: ${{ inputs.tag }}
@@ -287,7 +287,7 @@ jobs:
           path: release-assets
           name: module-release-assets
       - name: Recheck release tag against the admitted source SHA
-        uses: tinyhumansai/.github/.github/actions/module-reviewed-epic-preflight@2082aee077bbd16a500869fae514834f22cde2cd
+        uses: tinyhumansai/.github/.github/actions/module-reviewed-epic-preflight@51a877c3b2ae625e1a452cf65ed4149f606bc5ba
         with:
           token: ${{ github.token }}
           tag: ${{ inputs.tag }}
