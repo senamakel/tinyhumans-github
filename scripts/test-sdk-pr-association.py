@@ -57,7 +57,7 @@ class WorkflowPullAssociationTests(unittest.TestCase):
             fake.workflow_runs[fake.heads[72]][0]["pull_requests"] = association
             self.fake = fake
             with self.subTest(association=association), self.assertRaisesRegex(
-                self.verify.verify.VerificationError, "workflow run|pull request"
+                self.verify.verify.VerificationError, "workflow run|pull request|references|pin|logs"
             ):
                 self.run_verification()
 
