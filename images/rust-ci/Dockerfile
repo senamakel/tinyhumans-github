@@ -23,19 +23,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         awscli openssh-client uidmap slirp4netns iptables iproute2 \
     && rm -rf /var/lib/apt/lists/*
 
-# MongoDB 7.0 and mongosh, for tests that need a real server
+# MongoDB and mongosh, for tests that need a real server
 # (`mongod --fork`, replica sets with `rs.initiate`): the runner's service
 # containers and `docker run` are not available inside a container job.
+ARG MONGODB_MAJOR=7.0
 ARG MONGODB_VERSION=7.0.45
-RUN curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
-        | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg \
-    && gpg --no-default-keyring --keyring /usr/share/keyrings/mongodb-server-7.0.gpg \
-        --list-keys --with-colons | grep -q '^fpr:::::::::E58830201F7DD82CD808AA84160D26BB1785BA38:' \
-    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" \
-        > /etc/apt/sources.list.d/mongodb-org-7.0.list \
+ARG MONGODB_KEY_FINGERPRINT=E58830201F7DD82CD808AA84160D26BB1785BA38
+RUN curl -fsSL https://www.mongodb.org/static/pgp/server-${MONGODB_MAJOR}.asc \
+        | gpg --dearmor -o /usr/share/keyrings/mongodb-server-${MONGODB_MAJOR}.gpg \
+    && gpg --no-default-keyring --keyring /usr/share/keyrings/mongodb-server-${MONGODB_MAJOR}.gpg \
+        --list-keys --with-colons | grep -q "^fpr:::::::::${MONGODB_KEY_FINGERPRINT}:" \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/mongodb-server-${MONGODB_MAJOR}.gpg] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/${MONGODB_MAJOR} multiverse" \
+        > /etc/apt/sources.list.d/mongodb-org-${MONGODB_MAJOR}.list \
     && apt-get update && apt-get install -y --no-install-recommends \
         "mongodb-org-server=${MONGODB_VERSION}" mongodb-mongosh \
     && rm -rf /var/lib/apt/lists/*
+
+ENV RUST_CI_MONGODB_MAJOR=${MONGODB_MAJOR}
 
 # Rust: the stable release CI builds with, the MSRV it is checked against,
 # and the components clippy, fmt and cargo-llvm-cov need. Both are installed

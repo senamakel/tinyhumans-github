@@ -95,3 +95,12 @@ AWS CLI. A VM runner must supply user namespaces and at least 65,536 subordinate
 UIDs/GIDs for its job user. No root daemon or privileged Docker socket is baked
 into this image. Verify a rootless build in the target VM before enabling deploys;
 image build smoke tests cannot prove the host kernel supports user namespaces.
+
+## MongoDB 8 variant
+
+OpenIntents requires MongoDB 8. The publisher also builds `mongo8-latest`,
+`mongo8-rust-<stable>` and `mongo8-sha-<commit>` using MongoDB 8.0.34,
+with its own verified signing key and pnpm 10.34.5. Existing tags keep MongoDB 7.0.45.
+Both variants smoke-test replica-set primary readiness and a transaction.
+Consumers must pin the published digest and roll matching idle EX63 guests
+before enabling that pin. Do not replace an active slot's rootfs.
