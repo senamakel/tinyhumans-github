@@ -760,7 +760,7 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
             merge("tinydocs", "0.2.4", source, destination)
             self.assertEqual(
                 sorted(path.name for path in destination.iterdir()),
-                ["tinydocs-bus-0.2.4.crate", "tinybus-source-0123456789ab.tar.gz"],
+                ["tinybus-source-0123456789ab.tar.gz", "tinydocs-bus-0.2.4.crate"],
             )
             self.assertEqual((destination / crate.name).read_bytes(), b"crate")
             self.assertEqual((destination / bus.name).read_bytes(), b"bus source")
