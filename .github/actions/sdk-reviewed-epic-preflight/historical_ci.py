@@ -93,6 +93,12 @@ def _checkout_merge_sha(text: str, reviewed_pr: int) -> str:
     if not action_starts:
         raise ValueError("historical fmt job has no checkout step")
     first_start = action_starts[0]
+    checkout_steps = [
+        index for index in action_starts
+        if re.search(r"##\[group\]Run actions/checkout@", lines[index])
+    ]
+    if len(checkout_steps) != 1 or checkout_steps[0] != first_start:
+        raise ValueError("historical fmt checkout step was duplicated or out of order")
     if not re.search(rf"##\[group\]Run actions/checkout@{CHECKOUT_ACTION_PIN}\s*$", lines[first_start]):
         raise ValueError("historical fmt job did not start with the pinned checkout action")
     checkout_end = action_starts[1] if len(action_starts) > 1 else len(lines)
@@ -106,6 +112,11 @@ def _checkout_merge_sha(text: str, reviewed_pr: int) -> str:
         checkout_commands[0],
     ):
         raise ValueError("historical fmt checkout command was ambiguous")
+    fetch_commands = [line for line in checkout_lines if re.search(r"\bgit .*\bfetch\b", line)]
+    if len(fetch_commands) != 1 or len(re.findall(
+        rf"refs/remotes/pull/{reviewed_pr}/merge", fetch_commands[0]
+    )) != 1:
+        raise ValueError("historical fmt fetch did not identify one exact reviewed PR merge ref")
     log_indexes = [
         index for index, line in enumerate(checkout_lines)
         if re.search(r"\bgit log -1 --format=%H\s*$", line)
