@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -102,6 +103,38 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "extra_files": [], "workflow_id": 339480400,
                 "module_ci_sha": "62c8ae0468f3882b75947d5cba9687e609ce1fed",
             },
+        )
+
+    def test_tinyjuice_asset_stem_matches_the_tagged_build_and_release_assembly(self):
+        fixture = json.loads(
+            (Path(__file__).parent / "fixtures" / "tinyjuice-v0.10.6-release-assets.json").read_text()
+        )
+        profile = VERIFY.MODULE_PROFILES["tinyhumansai/tinyjuice"]
+        self.assertEqual(profile["package"], fixture["crate"])
+        self.assertEqual(profile["asset"], fixture["crate"])
+
+        shell_archive = fixture["shell_archive_template"]
+        for key in ("crate", "version", "host"):
+            shell_archive = shell_archive.replace("${" + key + "}", fixture[key])
+        powershell_archive = fixture["powershell_archive_template"]
+        for key, fixture_key in (("${Crate}", "crate"), ("$Version", "version"), ("$HostKey", "windows_host")):
+            powershell_archive = powershell_archive.replace(key, fixture[fixture_key])
+        self.assertEqual(shell_archive, fixture["native_archive"])
+        self.assertEqual(powershell_archive, fixture["windows_archive"])
+
+        native_archive = fixture["native_archive"]
+        expected_archive = (
+            f"{profile['asset']}-{fixture['version']}-{fixture['host']}.tar.gz"
+        )
+        self.assertEqual(native_archive, expected_archive)
+        workflow = (ROOT / ".github/workflows/module-reviewed-epic-release.yml").read_text()
+        self.assertIn(
+            'release-assets/${MODULE_ASSET}-${MODULE_VERSION}-${MODULE_HOST}.tar.gz',
+            workflow,
+        )
+        self.assertEqual(
+            fixture["windows_archive"],
+            f"{profile['asset']}-{fixture['version']}-{fixture['windows_host']}.zip",
         )
         self.assertEqual(
             VERIFY.MODULE_PROFILES["tinyhumansai/tinychannels"],

@@ -31,7 +31,7 @@ MODULE_PROFILES = {
         "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
     },
     "tinyhumansai/tinyjuice": {
-        "package": "tinyjuice-module", "asset": "tinyjuice", "manifest": "Cargo.toml",
+        "package": "tinyjuice-module", "asset": "tinyjuice-module", "manifest": "Cargo.toml",
         "extra_files": ["docs/specs/tinybus-module.md"], "workflow_id": 307270985,
         "module_ci_sha": "3e87ade76b622844985d0c665a3b075313e4545c",
     },
