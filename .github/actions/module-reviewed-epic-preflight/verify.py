@@ -35,6 +35,11 @@ MODULE_PROFILES = {
         "extra_files": ["docs/specs/tinybus-module.md"], "workflow_id": 307270985,
         "module_ci_sha": "3e87ade76b622844985d0c665a3b075313e4545c",
     },
+    "tinyhumansai/tinywallet": {
+        "package": "tinywallet-module", "asset": "tinywallet-module", "manifest": "Cargo.toml",
+        "extra_files": [], "workflow_id": 331024528,
+        "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+    },
 }
 MODULE_PACKAGES = {repo: profile["package"] for repo, profile in MODULE_PROFILES.items()}
 CI_WORKFLOW_IDS = {repo: profile["workflow_id"] for repo, profile in MODULE_PROFILES.items()}
