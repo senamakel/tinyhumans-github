@@ -36,6 +36,10 @@ class WorkflowPullAssociationTests(unittest.TestCase):
         other["pull_requests"] = [{"number": 999}]
         other["conclusion"] = "success"
         self.fake.workflow_runs[head].append(other)
+        self.fake.workflow_jobs[(other["id"], other["run_attempt"])] = [
+            dict(job, run_id=other["id"])
+            for job in self.fake.workflow_jobs[(actual["id"], actual["run_attempt"])]
+        ]
         with self.assertRaisesRegex(self.verify.verify.VerificationError, "workflow run|successful"):
             self.run_verification()
 
