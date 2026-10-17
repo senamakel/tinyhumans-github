@@ -50,6 +50,19 @@ MODULE_PROFILES = {
         "extra_files": [], "workflow_id": 307289287,
         "module_ci_sha": "3e87ade76b622844985d0c665a3b075313e4545c",
     },
+    "tinyhumansai/tinydocs": {
+        "package": "tinydocs-module", "asset": "tinydocs-module", "manifest": "Cargo.toml",
+        "extra_files": ["docs/specs/tinybus-module.md"], "workflow_id": 331024957,
+        "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+        "source_bundle": "tinydocs",
+    },
+    "tinyhumansai/tinyvoice": {
+        "package": "tinyvoice-module", "asset": "tinyvoice-module",
+        "manifest": "crates/tinyvoice-module/Cargo.toml", "extra_files": [],
+        "workflow_id": 333928426,
+        "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+        "apt_packages": "libasound2-dev libx11-dev libxtst-dev libxi-dev",
+    },
 }
 MODULE_PACKAGES = {repo: profile["package"] for repo, profile in MODULE_PROFILES.items()}
 CI_WORKFLOW_IDS = {repo: profile["workflow_id"] for repo, profile in MODULE_PROFILES.items()}
@@ -739,6 +752,8 @@ def main() -> int:
         output.write(f"module-asset={profile['asset']}\n")
         output.write(f"module-manifest={profile['manifest']}\n")
         output.write(f"extra-packaged-files={json.dumps(profile['extra_files'], separators=(',', ':'))}\n")
+        output.write(f"module-apt-packages={profile.get('apt_packages', '')}\n")
+        output.write(f"module-source-bundle={profile.get('source_bundle', '')}\n")
     print(f"verified reviewed module source {source_sha}")
     return 0
 
