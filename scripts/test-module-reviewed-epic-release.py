@@ -41,7 +41,16 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinyjuice": "tinyjuice-module",
             },
         )
-        self.assertEqual(len(VERIFY.REQUIRED_CHECKS), 13)
+        self.assertEqual(VERIFY.CHECK_APP_ID, 15368)
+        self.assertEqual(
+            VERIFY.REQUIRED_CHECKS,
+            tuple("module-ci / " + name for name in (
+                "fmt", "clippy", "test", "coverage", "docs", "msrv", "supply-chain",
+                "module-e2e (ubuntu-latest)", "module-e2e (macos-latest)",
+                "module-e2e (windows-latest)", "feature-tests (ubuntu-latest)",
+                "feature-tests (macos-latest)", "feature-tests (windows-latest)",
+            )),
+        )
         self.assertEqual(
             {repo: profile["manifest"] for repo, profile in VERIFY.MODULE_PROFILES.items()},
             {repo: "Cargo.toml" for repo in VERIFY.MODULE_PROFILES},
@@ -159,6 +168,41 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, f"existing path changed: {path}")
 
+    def test_preflight_action_pin_is_immutable_and_matches_the_complete_action_tree(self):
+        import subprocess
+
+        workflow = yaml.load(
+            (ROOT / ".github/workflows/module-reviewed-epic-release.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        action_path = ".github/actions/module-reviewed-epic-preflight"
+        uses = [
+            step.get("uses", "")
+            for job in workflow["jobs"].values()
+            for step in job.get("steps", [])
+            if "module-reviewed-epic-preflight@" in step.get("uses", "")
+        ]
+        self.assertEqual(len(uses), 2)
+        self.assertTrue(all(
+            item.startswith("tinyhumansai/.github/" + action_path + "@")
+            for item in uses
+        ))
+        pins = {item.rsplit("@", 1)[1] for item in uses}
+        self.assertEqual(len(pins), 1)
+        pin = pins.pop()
+        self.assertRegex(pin, r"^[0-9a-f]{40}$")
+        pinned = subprocess.run(
+            ["git", "rev-parse", f"{pin}:{action_path}"], cwd=ROOT,
+            capture_output=True, text=True, check=False,
+        )
+        current = subprocess.run(
+            ["git", "rev-parse", f"HEAD:{action_path}"], cwd=ROOT,
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(pinned.returncode, 0, "pinned action tree is missing")
+        self.assertEqual(current.returncode, 0, "current action tree is missing")
+        self.assertEqual(pinned.stdout.strip(), current.stdout.strip())
+
 
 class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
     def setUp(self):
@@ -189,6 +233,7 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
                         "${{ needs.preflight.outputs.source-sha }}",
                     )
                     self.assertEqual(checkout["with"].get("persist-credentials"), "false")
+                self.assertNotIn("GH_TOKEN", str(jobs[name]))
 
     def test_publish_is_the_only_write_job_and_rechecks_tag_after_artifacts(self):
         jobs = self.workflow["jobs"]
@@ -200,6 +245,11 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("needs.preflight.outputs.source-sha", publish)
         self.assertNotIn("actions/checkout", publish)
         self.assertNotIn("cargo ", publish)
+        for prerequisite in ("preflight", "validate", "native", "distro"):
+            self.assertIn(
+                f"needs.{prerequisite}.result == 'success'",
+                jobs["assemble"]["if"],
+            )
 
     def test_fixed_native_and_distro_targets_are_required_and_registry_is_absent(self):
         workflow = (ROOT / ".github/workflows/module-reviewed-epic-release.yml").read_text()
