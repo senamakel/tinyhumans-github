@@ -112,7 +112,8 @@ and its main-ancestor gate. Remove the temporary caller/path before the epic's
 final rollup; after the epic is merged to main, release from the main-based
 entrypoint.
 
-For the same migration only, `tinyconnectors`, `tinybox`, and `tinyjuice` may
+For the same migration only, `tinyconnectors`, `tinybox`, `tinyjuice`, and
+`tinywallet` may
 temporarily call `module-reviewed-epic-release.yml` with a positive
 `reviewed-pr`. Its verifier has a compiled-in canonical repository/package/
 workflow-ID map and checks the complete reviewed epic path and the same 13
@@ -133,12 +134,18 @@ The verifier's initial profiles are literal and closed:
 | `tinyhumansai/tinyconnectors` | `tinyconnectors` | `tinyconnectors` | `345777017` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none |
 | `tinyhumansai/tinybox` | `tinybox-module` | `tinybox` | `334144667` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none |
 | `tinyhumansai/tinyjuice` | `tinyjuice-module` | `tinyjuice` | `307270985` | `3e87ade76b622844985d0c665a3b075313e4545c` | `Cargo.toml` | `docs/specs/tinybus-module.md` |
+| `tinyhumansai/tinywallet` | `tinywallet-module` | `tinywallet-module` | `331024528` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none |
 
 The TinyJuice profile keeps the pin used by its reviewed release workflow. At
 that revision the check names and fmt checkout match the newer module CI
 profile; only the MSRV-selection implementation differs. Historical releases
 must prove the exact pin from the canonical Actions run and fmt job log for
 their repository.
+
+The TinyWallet profile follows its package-derived `tinywallet-module` archive
+name and has no extra checked-in package files. Its Rust 1.85 MSRV applies to
+the declared public library targets; the module E2E job intentionally uses
+Rust 1.88, so that job does not broaden the public MSRV claim.
 
 Add another repository only through a separately reviewed update to this
 allowlist, including its actual canonical CI workflow identity and package
