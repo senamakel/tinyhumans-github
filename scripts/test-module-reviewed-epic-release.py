@@ -103,6 +103,29 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "module_ci_sha": "62c8ae0468f3882b75947d5cba9687e609ce1fed",
             },
         )
+
+    def test_tinyjuice_asset_stem_matches_the_tagged_build_and_release_assembly(self):
+        fixture = json.loads(
+            (Path(__file__).parent / "fixtures" / "tinyjuice-v0.10.6-release-assets.json").read_text()
+        )
+        profile = VERIFY.MODULE_PROFILES["tinyhumansai/tinyjuice"]
+        self.assertEqual(profile["package"], fixture["crate"])
+        self.assertEqual(profile["asset"], fixture["native_archive"].split("-")[0])
+
+        native_archive = fixture["native_archive"]
+        expected_archive = (
+            f"{profile['asset']}-{fixture['version']}-{fixture['host']}.tar.gz"
+        )
+        self.assertEqual(native_archive, expected_archive)
+        workflow = (ROOT / ".github/workflows/module-reviewed-epic-release.yml").read_text()
+        self.assertIn(
+            'release-assets/${MODULE_ASSET}-${MODULE_VERSION}-${MODULE_HOST}.tar.gz',
+            workflow,
+        )
+        self.assertEqual(
+            fixture["windows_archive"],
+            f"{profile['asset']}-{fixture['version']}-{fixture['windows_host']}.zip",
+        )
         self.assertEqual(
             VERIFY.MODULE_PROFILES["tinyhumansai/tinychannels"],
             {
