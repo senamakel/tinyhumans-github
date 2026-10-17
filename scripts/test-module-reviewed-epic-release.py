@@ -974,22 +974,37 @@ output.write_text("\\n".join(lines) + "\\n")
             self.assertNotIn("release-assets/tinydocs-bus-0.2.4.crate", args)
             self.assertNotIn("release-assets/tinybus-source-0123456789ab.tar.gz", args)
             manifest = (release / "checksum.toml").read_text()
-            self.assertIn(
-                f'"tinydocs-bus-0.2.4.crate" = "{hashlib.sha256(b"bus crate").hexdigest()}"',
-                manifest,
+            checksum_tables = parse_checksum_tables(manifest)
+            self.assertEqual(set(checksum_tables["sha256"]), {
+                *(f"tinydocs-module-0.2.4-{host}.{'zip' if host.startswith('windows-') else 'tar.gz'}" for host in hosts),
+                "tinydocs-bus-0.2.4.crate",
+                "tinybus-source-0123456789ab.tar.gz",
+            })
+            self.assertEqual(
+                checksum_tables["sha256"]["tinydocs-bus-0.2.4.crate"],
+                hashlib.sha256(b"bus crate").hexdigest(),
             )
-            self.assertIn(
-                f'"tinybus-source-0123456789ab.tar.gz" = "{hashlib.sha256(source_archive.read_bytes()).hexdigest()}"',
-                manifest,
+            self.assertEqual(
+                checksum_tables["sha256"]["tinybus-source-0123456789ab.tar.gz"],
+                hashlib.sha256(source_archive.read_bytes()).hexdigest(),
             )
+            self.assertEqual(set(checksum_tables["library_sha256"]), {
+                f"tinydocs-module-0.2.4-{host}.{'zip' if host.startswith('windows-') else 'tar.gz'}"
+                for host in hosts
+            })
+            self.assertNotIn("tinydocs-bus-0.2.4.crate", checksum_tables["library_sha256"])
+            self.assertNotIn("tinybus-source-0123456789ab.tar.gz", checksum_tables["library_sha256"])
+            expected_library_digest = hashlib.sha256(b"module library").hexdigest()
+            self.assertEqual(set(checksum_tables["library_sha256"].values()), {expected_library_digest})
             for host in hosts:
                 extension = "zip" if host.startswith("windows-") else "tar.gz"
                 asset = release / f"tinydocs-module-0.2.4-{host}.{extension}"
-                self.assertIn(
-                    f'"{asset.name}" = "{hashlib.sha256(asset.read_bytes()).hexdigest()}"',
-                    manifest,
+                self.assertEqual(
+                    checksum_tables["sha256"][asset.name],
+                    hashlib.sha256(asset.read_bytes()).hexdigest(),
                 )
-            self.assertEqual(manifest.count(" = "), 19)
+            self.assertEqual(len(checksum_tables["sha256"]), 19)
+            self.assertEqual(len(checksum_tables["library_sha256"]), 17)
 
             module_archive = next(release.glob("tinydocs-module-*.tar.gz"))
             module_archive.unlink()
