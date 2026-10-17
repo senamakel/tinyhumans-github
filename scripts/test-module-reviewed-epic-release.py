@@ -49,6 +49,14 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
             },
         )
         self.assertEqual(
+            {repo: profile["module_ci_sha"] for repo, profile in VERIFY.MODULE_PROFILES.items()},
+            {
+                "tinyhumansai/tinyconnectors": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+                "tinyhumansai/tinybox": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+                "tinyhumansai/tinyjuice": "3e87ade76b622844985d0c665a3b075313e4545c",
+            },
+        )
+        self.assertEqual(
             VERIFY.MODULE_PACKAGES,
             {
                 "tinyhumansai/tinyconnectors": "tinyconnectors",
@@ -215,6 +223,25 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
             VERIFY.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
             )
+
+    def test_each_repository_accepts_only_its_literal_module_ci_revision(self):
+        pins = FIXTURES.TRUSTED_MODULE_CI_PINS
+        for repository, package in VERIFY.MODULE_PACKAGES.items():
+            correct_pin = pins[repository]
+            other_pins = {pin for pin in pins.values() if pin != correct_pin}
+            for wrong_pin in other_pins:
+                fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+                run = fake.api.workflow_runs[fake.heads[75]][0]
+                run["referenced_workflows"][0]["sha"] = wrong_pin
+                run["referenced_workflows"][0]["path"] = (
+                    "tinyhumansai/.github/.github/workflows/module-ci.yml@" + wrong_pin
+                )
+                with self.subTest(repository=repository, wrong_pin=wrong_pin):
+                    with self.assertRaisesRegex(VERIFY.VerificationError, "workflow pin was not trusted"):
+                        VERIFY.verify_reviewed_release(
+                            fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7",
+                            package, 75,
+                        )
 
     def test_wrong_epic_base_and_false_merge_association_fail_closed(self):
         repository = "tinyhumansai/tinyconnectors"
