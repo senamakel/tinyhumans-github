@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
+import tempfile
 import unittest
+from unittest import mock
 
 import yaml
 
@@ -76,6 +79,31 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         api.tag_sha = "b" * 40
         with self.assertRaisesRegex(VERIFY.VerificationError, "no longer resolves"):
             VERIFY.verify_tag_binding(api, "v1.2.3", "a" * 40, "tinyconnectors")
+
+    def test_composite_preflight_env_derives_each_package_from_the_allowlist(self):
+        for repository, package in VERIFY.MODULE_PACKAGES.items():
+            fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+            with tempfile.TemporaryDirectory(prefix="module-release-output-") as directory:
+                output_path = Path(directory) / "github-output"
+                environment = {
+                    "MODE": "reviewed",
+                    "GH_REPO": repository,
+                    "GH_TOKEN": "test-token",
+                    "TAG": "v0.1.7",
+                    "VERSION": "0.1.7",
+                    "REVIEWED_PR": "75",
+                    "GITHUB_OUTPUT": str(output_path),
+                }
+                with self.subTest(repository=repository):
+                    with mock.patch.object(VERIFY, "GitHubApi", return_value=fake.api), \
+                            mock.patch.object(VERIFY, "BareHistory", return_value=fake.git), \
+                            mock.patch.dict(os.environ, environment, clear=False):
+                        self.assertEqual(VERIFY.main(), 0)
+                outputs = dict(
+                    line.split("=", 1) for line in output_path.read_text().splitlines()
+                )
+                self.assertEqual(outputs["module-package"], package)
+                self.assertEqual(outputs["source-sha"], fake.tag_sha)
 
     def test_each_allowed_repository_accepts_the_complete_reviewed_merge_history(self):
         for repository, package in VERIFY.MODULE_PACKAGES.items():
