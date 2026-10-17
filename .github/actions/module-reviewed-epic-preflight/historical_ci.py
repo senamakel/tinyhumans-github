@@ -28,7 +28,8 @@ def read_ci_checkout_proof(api, workflow_run: dict, job: dict) -> dict:
 
 
 def verify_ci_merge_provenance(api, workflow_run: dict, job: dict, pull: dict,
-                               association: dict | None, checkout_proof: dict | None = None) -> None:
+                               association: dict | None, checkout_proof: dict | None = None,
+                               *, repository: str, epic_base: str) -> None:
     """Bind the tested synthetic merge's ordered parents and tree to the released PR merge."""
     checkout_proof = checkout_proof or read_ci_checkout_proof(api, workflow_run, job)
     if checkout_proof["pull_number"] != pull["number"]:
@@ -40,13 +41,16 @@ def verify_ci_merge_provenance(api, workflow_run: dict, job: dict, pull: dict,
     if synthetic_commit["tree_sha"] != reviewed_commit["tree_sha"]:
         raise ValueError("historical CI checkout tree did not match the reviewed merge tree")
     if association is not None:
-        _verify_event_association(association, pull, reviewed_commit["parents"])
+    _verify_event_association(
+        association, pull, reviewed_commit["parents"], repository, epic_base
+    )
 
 
 def _verify_event_association(association: dict, pull: dict,
-                              reviewed_parents: tuple[str, ...]) -> None:
+                              reviewed_parents: tuple[str, ...],
+                              repository: str, epic_base: str) -> None:
     number = pull["number"]
-    if association.get("url") != f"https://api.github.com/repos/tinyhumansai/tinybus/pulls/{number}":
+    if association.get("url") != f"https://api.github.com/repos/{repository}/pulls/{number}":
         raise ValueError("workflow run pull request URL did not identify the canonical PR")
     base = association.get("base")
     head = association.get("head")
@@ -56,13 +60,13 @@ def _verify_event_association(association: dict, pull: dict,
     head_repo = head.get("repo")
     if (
         not isinstance(base_repo, dict)
-        or base_repo.get("full_name") != "tinyhumansai/tinybus"
+        or base_repo.get("full_name") != repository
         or not isinstance(head_repo, dict)
         or head_repo.get("full_name") != pull["head_repository"]
     ):
         raise ValueError("workflow run pull request repository binding did not match")
     if (
-        base.get("ref") != "epic/8056-modules-wiring"
+        base.get("ref") != epic_base
         or base.get("sha") != reviewed_parents[0]
         or head.get("ref") != pull["head_ref"]
         or head.get("sha") != pull["head_sha"]

@@ -1,20 +1,20 @@
-name: Verify reviewed TinyBus epic release
-description: Verify the exact TinyBus epic PR chain and its CI before packaging a source release.
+name: Verify reviewed module epic release
+description: Verify an allowlisted module epic PR chain and its CI before source execution.
 inputs:
   token:
-    description: Read-only GITHUB_TOKEN for the TinyBus PR and check APIs.
+    description: Read-only GITHUB_TOKEN for canonical PR, review, check, and Actions APIs.
     required: true
   tag:
-    description: Existing TinyBus version tag.
+    description: Existing version tag at the exact reviewed PR merge commit.
     required: true
   version:
     description: Version without the leading v.
     required: false
   package:
-    description: Cargo SDK package name.
+    description: Must match the compiled-in package for github.repository.
     required: false
   reviewed-pr:
-    description: PR whose exact merge commit the release tag names.
+    description: Positive PR number whose exact merge commit the release tag names.
     required: false
   mode:
     description: reviewed validates the PR chain; tag-only rechecks the tag binding.
@@ -25,8 +25,14 @@ inputs:
     required: false
 outputs:
   source-sha:
-    description: Exact merge commit validated for the SDK source release.
+    description: Exact merge commit admitted for module source execution.
     value: ${{ steps.verify.outputs.source-sha }}
+  module-package:
+    description: Compiled-in Cargo module package for the canonical caller repository.
+    value: ${{ steps.verify.outputs.module-package }}
+  module-asset:
+    description: Compiled-in public module asset stem for the canonical caller repository.
+    value: ${{ steps.verify.outputs.module-asset }}
 runs:
   using: composite
   steps:
@@ -41,4 +47,4 @@ runs:
         REVIEWED_PR: ${{ inputs.reviewed-pr }}
         MODE: ${{ inputs.mode }}
         EXPECTED_SHA: ${{ inputs.expected-sha }}
-      run: python3 "$GITHUB_ACTION_PATH/verify.py"
+        run: python3 "$GITHUB_ACTION_PATH/verify.py"

@@ -595,7 +595,7 @@ def _verify_required_checks(api, pull: dict) -> None:
             or job.get("conclusion") != "success"
         ):
             raise VerificationError(f"canonical CI job is not successful: {required}")
-        check_run_id = _check_run_id(job.get("check_run_url"))
+        check_run_id = _check_run_id(job.get("check_run_url"), api.repository)
         matching = [
             run for run in runs
             if run.get("name") == required
@@ -670,15 +670,16 @@ def main() -> int:
     repository = os.environ.get("GH_REPO", "")
     tag = os.environ.get("TAG", "")
     token = os.environ.get("GH_TOKEN", "")
+    package = os.environ.get("PACKAGE", "")
     if not token:
         raise VerificationError("GitHub read token was not provided")
     api = GitHubApi(token, repository)
     if mode == "tag-only":
-        verify_tag_binding(api, tag, os.environ.get("EXPECTED_SHA", ""))
-        print("release tag still matches the verified source SHA")
+        verify_tag_binding(api, tag, os.environ.get("EXPECTED_SHA", ""), package)
+        print("release tag still matches the verified module source SHA")
         return 0
     if mode != "reviewed":
-        raise VerificationError("unknown SDK release verification mode")
+        raise VerificationError("unknown module release verification mode")
     try:
         reviewed_pr = int(os.environ.get("REVIEWED_PR", ""))
     except ValueError as error:
@@ -689,12 +690,15 @@ def main() -> int:
         repository,
         tag,
         os.environ.get("VERSION", ""),
-        os.environ.get("PACKAGE", ""),
+        package,
         reviewed_pr,
     )
+    profile = _validate_module(repository, package)
     with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
         output.write(f"source-sha={source_sha}\n")
-    print(f"verified reviewed TinyBus SDK source {source_sha}")
+        output.write(f"module-package={profile['package']}\n")
+        output.write(f"module-asset={profile['asset']}\n")
+    print(f"verified reviewed module source {source_sha}")
     return 0
 
 
@@ -702,5 +706,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except VerificationError as error:
-        print(f"SDK release preflight refused: {error}", file=sys.stderr)
+        print(f"Module release preflight refused: {error}", file=sys.stderr)
         raise SystemExit(1)
