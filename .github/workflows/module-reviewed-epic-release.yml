@@ -484,118 +484,118 @@ jobs:
           cargo run --locked --manifest-path vendor/tinybus/Cargo.toml --features cli --bin tinybus -- modules checksum "${checksum_args[@]}" --output release-assets/checksum.toml
           if [[ "$MODULE_SOURCE_BUNDLE" == "tinydocs" ]]; then
             python3 - "$MODULE_VERSION" release-assets/checksum.toml "${source_assets[@]}" <<'PYTHON'
-            from pathlib import Path
-            import hashlib
-            import json
-            import os
-            import re
-            import tempfile
-            import sys
+          from pathlib import Path
+          import hashlib
+          import json
+          import os
+          import re
+          import tempfile
+          import sys
 
-            DIGEST = re.compile(r"^[0-9a-f]{64}$")
-            ENTRY = re.compile(r'^"([A-Za-z0-9._-]+)" = "([0-9a-f]{64})"$')
-            TINYBUS_ARCHIVE = re.compile(r"^tinybus-source-[0-9a-f]{12}\.tar\.gz$")
+          DIGEST = re.compile(r"^[0-9a-f]{64}$")
+          ENTRY = re.compile(r'^"([A-Za-z0-9._-]+)" = "([0-9a-f]{64})"$')
+          TINYBUS_ARCHIVE = re.compile(r"^tinybus-source-[0-9a-f]{12}\.tar\.gz$")
 
-            def parse_manifest(source):
-                tables = {}
-                current = None
-                for line_number, line in enumerate(source.splitlines(), 1):
-                    if not line.strip():
-                        continue
-                    section = re.fullmatch(r"\[([a-z0-9_]+)\]", line.strip())
-                    if section:
-                        current = section.group(1)
-                        if current not in {"sha256", "library_sha256"} or current in tables:
-                            raise ValueError(f"unsupported or duplicate checksum table at line {line_number}")
-                        tables[current] = {}
-                        continue
-                    entry = ENTRY.fullmatch(line.strip())
-                    if current is None or entry is None:
-                        raise ValueError(f"invalid checksum manifest line {line_number}")
-                    name, digest = entry.groups()
-                    if name in tables[current]:
-                        raise ValueError(f"duplicate checksum entry: {name}")
-                    tables[current][name] = digest
-                if "sha256" not in tables:
-                    raise ValueError("checksum manifest is missing the sha256 table")
-                return tables
+          def parse_manifest(source):
+              tables = {}
+              current = None
+              for line_number, line in enumerate(source.splitlines(), 1):
+                  if not line.strip():
+                      continue
+                  section = re.fullmatch(r"\[([a-z0-9_]+)\]", line.strip())
+                  if section:
+                      current = section.group(1)
+                      if current not in {"sha256", "library_sha256"} or current in tables:
+                          raise ValueError(f"unsupported or duplicate checksum table at line {line_number}")
+                      tables[current] = {}
+                      continue
+                  entry = ENTRY.fullmatch(line.strip())
+                  if current is None or entry is None:
+                      raise ValueError(f"invalid checksum manifest line {line_number}")
+                  name, digest = entry.groups()
+                  if name in tables[current]:
+                      raise ValueError(f"duplicate checksum entry: {name}")
+                  tables[current][name] = digest
+              if "sha256" not in tables:
+                  raise ValueError("checksum manifest is missing the sha256 table")
+              return tables
 
-            def sha256_file(path):
-                digest = hashlib.sha256()
-                with path.open("rb") as source:
-                    for chunk in iter(lambda: source.read(1024 * 1024), b""):
-                        digest.update(chunk)
-                return digest.hexdigest()
+          def sha256_file(path):
+              digest = hashlib.sha256()
+              with path.open("rb") as source:
+                  for chunk in iter(lambda: source.read(1024 * 1024), b""):
+                      digest.update(chunk)
+              return digest.hexdigest()
 
-            def add_source_checksums(manifest_path, source_paths, version):
-                manifest_path = Path(manifest_path)
-                source_paths = [Path(path) for path in source_paths]
-                if manifest_path.is_symlink() or not manifest_path.is_file():
-                    raise ValueError("checksum manifest path is not a regular file")
-                if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?", version):
-                    raise ValueError("source checksum version is invalid")
+          def add_source_checksums(manifest_path, source_paths, version):
+              manifest_path = Path(manifest_path)
+              source_paths = [Path(path) for path in source_paths]
+              if manifest_path.is_symlink() or not manifest_path.is_file():
+                  raise ValueError("checksum manifest path is not a regular file")
+              if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?", version):
+                  raise ValueError("source checksum version is invalid")
 
-                tables = parse_manifest(manifest_path.read_text(encoding="utf-8"))
-                archive_hashes = tables["sha256"]
-                module_pattern = re.compile(
-                    rf"^tinydocs-module-{re.escape(version)}-[A-Za-z0-9][A-Za-z0-9._-]*\.(?:tar\.gz|zip)$"
-                )
-                module_names = set(archive_hashes)
-                if len(module_names) != 17 or any(not module_pattern.fullmatch(name) for name in module_names):
-                    raise ValueError("checksum manifest does not contain exactly the 17 TinyDocs module archives")
-                if any(not DIGEST.fullmatch(digest) for digest in archive_hashes.values()):
-                    raise ValueError("module archive checksum is malformed")
-                library_hashes = tables.get("library_sha256", {})
-                if library_hashes and set(library_hashes) != module_names:
-                    raise ValueError("module library checksum table does not match the 17 module archives")
-                if any(not DIGEST.fullmatch(digest) for digest in library_hashes.values()):
-                    raise ValueError("module library checksum is malformed")
+              tables = parse_manifest(manifest_path.read_text(encoding="utf-8"))
+              archive_hashes = tables["sha256"]
+              module_pattern = re.compile(
+                  rf"^tinydocs-module-{re.escape(version)}-[A-Za-z0-9][A-Za-z0-9._-]*\.(?:tar\.gz|zip)$"
+              )
+              module_names = set(archive_hashes)
+              if len(module_names) != 17 or any(not module_pattern.fullmatch(name) for name in module_names):
+                  raise ValueError("checksum manifest does not contain exactly the 17 TinyDocs module archives")
+              if any(not DIGEST.fullmatch(digest) for digest in archive_hashes.values()):
+                  raise ValueError("module archive checksum is malformed")
+              library_hashes = tables.get("library_sha256", {})
+              if library_hashes and set(library_hashes) != module_names:
+                  raise ValueError("module library checksum table does not match the 17 module archives")
+              if any(not DIGEST.fullmatch(digest) for digest in library_hashes.values()):
+                  raise ValueError("module library checksum is malformed")
 
-                if len(source_paths) != 2:
-                    raise ValueError("TinyDocs source checksum input must contain exactly two files")
-                source_names = {path.name for path in source_paths}
-                package_name = f"tinydocs-bus-{version}.crate"
-                if (
-                    len(source_names) != 2
-                    or package_name not in source_names
-                    or sum(bool(TINYBUS_ARCHIVE.fullmatch(name)) for name in source_names) != 1
-                ):
-                    raise ValueError("TinyDocs source checksum names do not match the compiled-in bundle")
-                if source_names & (set(archive_hashes) | set(library_hashes)):
-                    raise ValueError("TinyDocs source checksum name collides with a module checksum")
-                source_hashes = {}
-                for path in source_paths:
-                    if path.is_symlink() or not path.is_file():
-                        raise ValueError(f"TinyDocs source checksum input is not a regular file: {path.name}")
-                    source_hashes[path.name] = sha256_file(path)
+              if len(source_paths) != 2:
+                  raise ValueError("TinyDocs source checksum input must contain exactly two files")
+              source_names = {path.name for path in source_paths}
+              package_name = f"tinydocs-bus-{version}.crate"
+              if (
+                  len(source_names) != 2
+                  or package_name not in source_names
+                  or sum(bool(TINYBUS_ARCHIVE.fullmatch(name)) for name in source_names) != 1
+              ):
+                  raise ValueError("TinyDocs source checksum names do not match the compiled-in bundle")
+              if source_names & (set(archive_hashes) | set(library_hashes)):
+                  raise ValueError("TinyDocs source checksum name collides with a module checksum")
+              source_hashes = {}
+              for path in source_paths:
+                  if path.is_symlink() or not path.is_file():
+                      raise ValueError(f"TinyDocs source checksum input is not a regular file: {path.name}")
+                  source_hashes[path.name] = sha256_file(path)
 
-                archive_hashes.update(source_hashes)
-                sections = ["[sha256]"]
-                sections.extend(
-                    f"{json.dumps(name)} = {json.dumps(digest)}"
-                    for name, digest in archive_hashes.items()
-                )
-                if library_hashes:
-                    sections.extend(["", "[library_sha256]"])
-                    sections.extend(
-                        f"{json.dumps(name)} = {json.dumps(digest)}"
-                        for name, digest in library_hashes.items()
-                    )
-                content = "\n".join(sections) + "\n"
-                descriptor, temporary = tempfile.mkstemp(
-                    prefix=".checksum.toml.", dir=manifest_path.parent,
-                )
-                try:
-                    with os.fdopen(descriptor, "w", encoding="utf-8") as output:
-                        output.write(content)
-                    os.replace(temporary, manifest_path)
-                finally:
-                    if os.path.exists(temporary):
-                        os.unlink(temporary)
+              archive_hashes.update(source_hashes)
+              sections = ["[sha256]"]
+              sections.extend(
+                  f"{json.dumps(name)} = {json.dumps(digest)}"
+                  for name, digest in archive_hashes.items()
+              )
+              if library_hashes:
+                  sections.extend(["", "[library_sha256]"])
+                  sections.extend(
+                      f"{json.dumps(name)} = {json.dumps(digest)}"
+                      for name, digest in library_hashes.items()
+                  )
+              content = "\n".join(sections) + "\n"
+              descriptor, temporary = tempfile.mkstemp(
+                  prefix=".checksum.toml.", dir=manifest_path.parent,
+              )
+              try:
+                  with os.fdopen(descriptor, "w", encoding="utf-8") as output:
+                      output.write(content)
+                  os.replace(temporary, manifest_path)
+              finally:
+                  if os.path.exists(temporary):
+                      os.unlink(temporary)
 
-            if __name__ == "__main__":
-                add_source_checksums(sys.argv[2], sys.argv[3:], sys.argv[1])
-            PYTHON
+          if __name__ == "__main__":
+              add_source_checksums(sys.argv[2], sys.argv[3:], sys.argv[1])
+          PYTHON
           fi
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
