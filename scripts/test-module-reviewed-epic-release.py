@@ -3,13 +3,18 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
+import io
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
+import tarfile
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 
 import yaml
@@ -39,8 +44,32 @@ FIXTURES = importlib.util.module_from_spec(FIXTURE_SPEC)
 FIXTURE_SPEC.loader.exec_module(FIXTURES)
 
 
+def parse_checksum_tables(source):
+    """Parse the checksum manifest's two simple digest tables and reject duplicates."""
+    tables = {}
+    current = None
+    for line_number, line in enumerate(source.splitlines(), 1):
+        if not line.strip():
+            continue
+        section = re.fullmatch(r"\[([a-z0-9_]+)\]", line.strip())
+        if section:
+            current = section.group(1)
+            if current in tables:
+                raise AssertionError(f"duplicate checksum table at line {line_number}")
+            tables[current] = {}
+            continue
+        entry = re.fullmatch(r'"([^"\\]+)"\s*=\s*"([0-9a-f]{64})"', line.strip())
+        if entry is None or current is None:
+            raise AssertionError(f"invalid checksum manifest line {line_number}: {line}")
+        name, digest = entry.groups()
+        if name in tables[current]:
+            raise AssertionError(f"duplicate checksum key {name}")
+        tables[current][name] = digest
+    return tables
+
+
 class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
-    def test_only_six_exact_canonical_repository_package_workflow_profiles_exist(self):
+    def test_only_eight_exact_canonical_repository_package_workflow_profiles_exist(self):
         self.assertEqual(
             VERIFY.CI_WORKFLOW_IDS,
             {
@@ -50,6 +79,8 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinywallet": 331024528,
                 "tinyhumansai/tinymcp": 339480400,
                 "tinyhumansai/tinychannels": 307289287,
+                "tinyhumansai/tinydocs": 331024957,
+                "tinyhumansai/tinyvoice": 333928426,
             },
         )
         self.assertEqual(
@@ -61,6 +92,8 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinywallet": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
                 "tinyhumansai/tinymcp": "62c8ae0468f3882b75947d5cba9687e609ce1fed",
                 "tinyhumansai/tinychannels": "3e87ade76b622844985d0c665a3b075313e4545c",
+                "tinyhumansai/tinydocs": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+                "tinyhumansai/tinyvoice": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
             },
         )
         self.assertEqual(
@@ -72,6 +105,8 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinywallet": "tinywallet-module",
                 "tinyhumansai/tinymcp": "tinymcp",
                 "tinyhumansai/tinychannels": "tinychannels-module",
+                "tinyhumansai/tinydocs": "tinydocs-module",
+                "tinyhumansai/tinyvoice": "tinyvoice-module",
             },
         )
         self.assertEqual(VERIFY.CHECK_APP_ID, 15368)
@@ -86,7 +121,10 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         )
         self.assertEqual(
             {repo: profile["manifest"] for repo, profile in VERIFY.MODULE_PROFILES.items()},
-            {repo: "Cargo.toml" for repo in VERIFY.MODULE_PROFILES},
+            {
+                repo: ("crates/tinyvoice-module/Cargo.toml" if repo == "tinyhumansai/tinyvoice" else "Cargo.toml")
+                for repo in VERIFY.MODULE_PROFILES
+            },
         )
         self.assertEqual(VERIFY.MODULE_PROFILES["tinyhumansai/tinywallet"]["asset"], "tinywallet-module")
         self.assertEqual(VERIFY.MODULE_PROFILES["tinyhumansai/tinywallet"]["extra_files"], [])
@@ -95,6 +133,25 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         self.assertEqual(
             VERIFY.MODULE_PROFILES["tinyhumansai/tinyjuice"]["extra_files"],
             ["docs/specs/tinybus-module.md"],
+        )
+        self.assertEqual(
+            VERIFY.MODULE_PROFILES["tinyhumansai/tinydocs"],
+            {
+                "package": "tinydocs-module", "asset": "tinydocs-module", "manifest": "Cargo.toml",
+                "extra_files": ["docs/specs/tinybus-module.md"], "workflow_id": 331024957,
+                "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+                "source_bundle": "tinydocs",
+            },
+        )
+        self.assertEqual(
+            VERIFY.MODULE_PROFILES["tinyhumansai/tinyvoice"],
+            {
+                "package": "tinyvoice-module", "asset": "tinyvoice-module",
+                "manifest": "crates/tinyvoice-module/Cargo.toml", "extra_files": [],
+                "workflow_id": 333928426,
+                "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+                "apt_packages": "libasound2-dev libx11-dev libxtst-dev libxi-dev",
+            },
         )
         self.assertEqual(
             VERIFY.MODULE_PROFILES["tinyhumansai/tinymcp"],
@@ -186,6 +243,15 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                         )
                         self.assertEqual(outputs["module-package"], package)
                         self.assertEqual(outputs["source-sha"], fake.tag_sha)
+                        profile = VERIFY.MODULE_PROFILES[repository]
+                        self.assertEqual(outputs["module-asset"], profile["asset"])
+                        self.assertEqual(outputs["module-manifest"], profile["manifest"])
+                        self.assertEqual(
+                            outputs["module-apt-packages"], profile.get("apt_packages", ""),
+                        )
+                        self.assertEqual(
+                            outputs["module-source-bundle"], profile.get("source_bundle", ""),
+                        )
 
     def test_main_rejects_explicit_package_mismatch_before_github_api_use(self):
         environment = {
@@ -580,6 +646,8 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         self.assertEqual(pinned_verifier.returncode, 0, "pinned action must contain its verifier")
         self.assertIn('"tinyhumansai/tinymcp"', pinned_verifier.stdout)
         self.assertIn('"tinyhumansai/tinychannels"', pinned_verifier.stdout)
+        self.assertIn('"tinyhumansai/tinydocs"', pinned_verifier.stdout)
+        self.assertIn('"tinyhumansai/tinyvoice"', pinned_verifier.stdout)
 
 
 class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
@@ -608,7 +676,7 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
             {"token", "tag", "version", "reviewed-pr"},
         )
         self.assertNotIn("package", verifier_step["with"])
-        source_jobs = ("validate", "native", "distro", "assemble")
+        source_jobs = ("validate", "native", "distro", "source_assets", "assemble")
         for name in source_jobs:
             with self.subTest(job=name):
                 needs = jobs[name]["needs"]
@@ -663,7 +731,309 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         self.assertNotIn("include-distros", workflow)
         self.assertNotIn("extra-packaged-files", self.workflow["on"]["workflow_call"]["inputs"])
         self.assertNotIn("apt-packages", self.workflow["on"]["workflow_call"]["inputs"])
+        self.assertNotIn("module-manifest", self.workflow["on"]["workflow_call"]["inputs"])
+        self.assertNotIn("source-artifact", self.workflow["on"]["workflow_call"]["inputs"])
         self.assertIn("expected=17", workflow)
+        self.assertIn("module-source-bundle", workflow)
+        self.assertIn("needs.source_assets.result == 'success'", workflow)
+        self.assertIn('-name "${MODULE_ASSET}-${MODULE_VERSION}-*.tar.gz"', workflow)
+        self.assertIn('-name "${MODULE_ASSET}-${MODULE_VERSION}-*.zip"', workflow)
+
+    def test_tinydocs_sources_are_built_after_admission_and_merged_into_release_assets(self):
+        jobs = self.workflow["jobs"]
+        self.assertIn("source_assets", jobs)
+        job = jobs["source_assets"]
+        self.assertIn("preflight", job["needs"])
+        self.assertIn("validate", job["needs"])
+        self.assertEqual(
+            job["if"],
+            "needs.preflight.outputs.module-source-bundle == 'tinydocs'",
+        )
+        checkouts = [step for step in job["steps"] if step.get("uses", "").startswith("actions/checkout@")]
+        self.assertEqual(len(checkouts), 1)
+        self.assertEqual(checkouts[0]["with"]["ref"], "${{ needs.preflight.outputs.source-sha }}")
+        self.assertEqual(checkouts[0]["with"].get("persist-credentials"), "false")
+        self.assertIn("cargo package --locked --package tinydocs-bus", str(job))
+        self.assertIn("git -C vendor/tinybus archive", str(job))
+        self.assertNotIn("GH_TOKEN", str(job))
+
+        assemble = jobs["assemble"]
+        self.assertIn("source_assets", assemble["needs"])
+        self.assertIn("module-*", str(assemble))
+        self.assertIn("tinydocs-source-assets", str(assemble))
+        self.assertIn("Merge the exact reviewed TinyDocs source bundle", str(assemble))
+        self.assertIn("checksum", str(assemble))
+        steps = assemble["steps"]
+        checksum_index = next(i for i, step in enumerate(steps) if "checksum" in step.get("name", "").lower())
+        source_download_index = next(i for i, step in enumerate(steps) if step.get("with", {}).get("name") == "tinydocs-source-assets")
+        source_merge_index = next(i for i, step in enumerate(steps) if step.get("name") == "Merge the exact reviewed TinyDocs source bundle")
+        upload_index = next(i for i, step in enumerate(steps) if step.get("uses", "").startswith("actions/upload-artifact@"))
+        self.assertLess(source_download_index, source_merge_index)
+        self.assertLess(source_merge_index, checksum_index)
+        self.assertLess(source_merge_index, upload_index)
+        self.assertEqual(steps[upload_index]["with"]["path"], "release-assets/*")
+
+    def test_reviewed_tinydocs_asset_merge_rejects_untrusted_or_incomplete_bundles(self):
+        assemble = self.workflow["jobs"]["assemble"]
+        step = next(step for step in assemble["steps"] if step.get("name") == "Merge the exact reviewed TinyDocs source bundle")
+        match = re.search(r"(?s)python3 - .*? <<'PYTHON'\n(.*?)\nPYTHON\s*$", step["run"])
+        self.assertIsNotNone(match, "TinyDocs source merger must remain inline in the trusted shared workflow")
+        namespace = {"__name__": "reviewed_source_merge_test"}
+        exec(compile(match.group(1), "reviewed-source-merge", "exec"), namespace)
+        merge = namespace["merge"]
+        with tempfile.TemporaryDirectory() as root:
+            source, destination = Path(root) / "source", Path(root) / "release"
+            source.mkdir(); destination.mkdir()
+            crate = source / "tinydocs-bus-0.2.4.crate"
+            bus = source / "tinybus-source-0123456789ab.tar.gz"
+            crate.write_bytes(b"crate")
+            bus.write_bytes(b"bus source")
+            merge("tinydocs", "0.2.4", source, destination)
+            self.assertEqual(
+                sorted(path.name for path in destination.iterdir()),
+                ["tinybus-source-0123456789ab.tar.gz", "tinydocs-bus-0.2.4.crate"],
+            )
+            self.assertEqual((destination / crate.name).read_bytes(), b"crate")
+            self.assertEqual((destination / bus.name).read_bytes(), b"bus source")
+
+        with tempfile.TemporaryDirectory() as root:
+            source, destination = Path(root) / "source", Path(root) / "release"
+            source.mkdir(); destination.mkdir()
+            (source / "tinydocs-bus-0.2.4.crate").write_bytes(b"crate")
+            (source / "tinybus-source-0123456789ab.tar.gz").write_bytes(b"bus source")
+            with self.assertRaisesRegex(ValueError, "unsupported reviewed source bundle"):
+                merge("caller-selected", "0.2.4", source, destination)
+            (source / "caller-extra.zip").write_bytes(b"extra")
+            with self.assertRaisesRegex(ValueError, "exact source asset set"):
+                merge("tinydocs", "0.2.4", source, destination)
+            self.assertEqual(list(destination.iterdir()), [])
+
+        with tempfile.TemporaryDirectory() as root:
+            source, destination = Path(root) / "source", Path(root) / "release"
+            source.mkdir(); destination.mkdir()
+            crate = source / "tinydocs-bus-0.2.4.crate"
+            bus = source / "tinybus-source-0123456789ab.tar.gz"
+            crate.write_bytes(b"crate")
+            bus.symlink_to(crate)
+            with self.assertRaisesRegex(ValueError, "exact source asset set"):
+                merge("tinydocs", "0.2.4", source, destination)
+            bus.unlink()
+            bus.write_bytes(b"bus source")
+            with self.assertRaisesRegex(ValueError, "version"):
+                merge("tinydocs", "../0.2.4", source, destination)
+            (destination / crate.name).write_bytes(b"verified")
+            with self.assertRaisesRegex(ValueError, "collides"):
+                merge("tinydocs", "0.2.4", source, destination)
+            self.assertEqual((destination / crate.name).read_bytes(), b"verified")
+            self.assertEqual(len(list(destination.iterdir())), 1)
+
+    def test_source_checksums_stay_in_sha256_table_when_library_table_is_present(self):
+        assemble = self.workflow["jobs"]["assemble"]
+        step = next(step for step in assemble["steps"] if "Checksum the exact module and source asset set" in step.get("name", ""))
+        match = re.search(r"(?s)python3 - .*? <<'PYTHON'\n(.*?)\nPYTHON\s*\n\s*fi\s*$", step["run"])
+        self.assertIsNotNone(match, "source manifest writer must be a TOML-aware inline helper")
+        namespace = {"__name__": "source_manifest_writer_test"}
+        exec(compile(match.group(1), "source-manifest-writer", "exec"), namespace)
+        add_source_checksums = namespace["add_source_checksums"]
+        hosts = [item["host"] for job_name in ("native", "distro")
+                 for item in self.workflow["jobs"][job_name]["strategy"]["matrix"]["include"]]
+        for version in ("0.2.4", "0.2.5-rc.1+build.5"):
+            module_names = {
+                f"tinydocs-module-{version}-{host}.{'zip' if host.startswith('windows-') else 'tar.gz'}"
+                for host in hosts
+            }
+            source_files = {
+                f"tinydocs-bus-{version}.crate": b"bus crate",
+                "tinybus-source-0123456789ab.tar.gz": b"pinned source",
+            }
+            source_hashes = {name: hashlib.sha256(content).hexdigest() for name, content in source_files.items()}
+            old_library_hashes = {name: "b" * 64 for name in module_names}
+            old_archive_hashes = {name: "a" * 64 for name in module_names}
+            for include_library_table in (True, False):
+                with self.subTest(version=version, include_library_table=include_library_table), tempfile.TemporaryDirectory() as root:
+                    release = Path(root) / "release-assets"
+                    release.mkdir()
+                    for name, data in source_files.items():
+                        (release / name).write_bytes(data)
+                    lines = ["[sha256]"]
+                    lines.extend(f'"{name}" = "{digest}"' for name, digest in old_archive_hashes.items())
+                    if include_library_table:
+                        lines.extend(["", "[library_sha256]"])
+                        lines.extend(f'"{name}" = "{digest}"' for name, digest in old_library_hashes.items())
+                    manifest_path = release / "checksum.toml"
+                    manifest_path.write_text("\n".join(lines) + "\n")
+                    source_paths = [release / name for name in source_hashes]
+                    add_source_checksums(manifest_path, source_paths, version)
+                    manifest_text = manifest_path.read_text()
+                    checksums = parse_checksum_tables(manifest_text)
+                    self.assertEqual(manifest_text.count("[sha256]"), 1)
+                    self.assertEqual(manifest_text.count("[library_sha256]"), int(include_library_table))
+                    self.assertEqual(set(checksums["sha256"]), module_names | set(source_hashes))
+                    for name, digest in source_hashes.items():
+                        self.assertEqual(checksums["sha256"][name], digest)
+                    if include_library_table:
+                        self.assertEqual(checksums["library_sha256"], old_library_hashes)
+                        self.assertTrue(module_names.isdisjoint(source_hashes.keys()))
+                        self.assertEqual(set(checksums["library_sha256"]), module_names)
+                    else:
+                        self.assertNotIn("library_sha256", checksums)
+
+    def test_tinydocs_source_job_packages_only_after_verified_source_checkout(self):
+        job = self.workflow["jobs"]["source_assets"]
+        script = str(job)
+        self.assertIn("cargo package --locked --package tinydocs-bus", script)
+        self.assertNotIn("--no-verify", script)
+        self.assertIn("git -C vendor/tinybus archive", script)
+        self.assertIn("git -C vendor/tinybus rev-parse --verify HEAD", script)
+        self.assertIn("tinydocs-bus-${MODULE_VERSION}.crate", script)
+        self.assertEqual(
+            next(step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@"))["with"]["name"],
+            "tinydocs-source-assets",
+        )
+
+    def test_checksum_manifest_covers_17_module_archives_and_both_tinydocs_sources(self):
+        assemble = self.workflow["jobs"]["assemble"]
+        step = next(step for step in assemble["steps"] if "Checksum the exact module and source asset set" in step.get("name", ""))
+        with tempfile.TemporaryDirectory() as root:
+            release = Path(root) / "release-assets"
+            release.mkdir()
+            hosts = [item["host"] for job_name in ("native", "distro")
+                     for item in self.workflow["jobs"][job_name]["strategy"]["matrix"]["include"]]
+            for host in hosts:
+                extension = "zip" if host.startswith("windows-") else "tar.gz"
+                archive = release / f"tinydocs-module-0.2.4-{host}.{extension}"
+                if extension == "zip":
+                    with zipfile.ZipFile(archive, "w") as bundle:
+                        bundle.writestr("tinyjuice_module.dll", b"module library")
+                else:
+                    with tarfile.open(archive, "w:gz") as bundle:
+                        library = b"module library"
+                        entry = tarfile.TarInfo("libtinyjuice_module.so")
+                        entry.size = len(library)
+                        bundle.addfile(entry, io.BytesIO(library))
+            source_archive = release / "tinybus-source-0123456789ab.tar.gz"
+            with tarfile.open(source_archive, "w:gz") as bundle:
+                source = b"[package]\\nname = \\\"tinybus\\\"\\n"
+                entry = tarfile.TarInfo("tinybus/Cargo.toml")
+                entry.size = len(source)
+                bundle.addfile(entry, io.BytesIO(source))
+            (release / "tinydocs-bus-0.2.4.crate").write_bytes(b"bus crate")
+            fake_bin = Path(root) / "bin"
+            fake_bin.mkdir()
+            capture = Path(root) / "cargo-args"
+            cargo = fake_bin / "cargo"
+            cargo.write_text(f'''#!{sys.executable}
+import hashlib
+from pathlib import Path
+import sys
+
+args = sys.argv[1:]
+paths = [args[index + 1] for index, value in enumerate(args[:-1]) if value == "--path"]
+output = Path(args[args.index("--output") + 1])
+Path({str(capture)!r}).write_text("\\n".join(args))
+import tarfile
+import zipfile
+# Model the target TinyBus checksum CLI: module archives must contain one native library.
+libraries = []
+for path in paths:
+    asset = Path(path)
+    if asset.name.endswith(".tar.gz"):
+        with tarfile.open(asset, "r:gz") as archive:
+            members = [entry.name for entry in archive.getmembers()]
+            native = [name for name in members if name.endswith((".so", ".dylib", ".dll"))]
+            library_bytes = archive.extractfile(native[0]).read() if len(native) == 1 else None
+    elif asset.name.endswith(".zip"):
+        with zipfile.ZipFile(asset) as archive:
+            members = archive.namelist()
+            native = [name for name in members if name.endswith((".so", ".dylib", ".dll"))]
+            library_bytes = archive.read(native[0]) if len(native) == 1 else None
+    else:
+        members = []
+    if asset.name.endswith((".tar.gz", ".zip")) and not any(name.endswith((".so", ".dylib", ".dll")) for name in members):
+        print(f"{{asset.name}}: release archive contains no platform module", file=sys.stderr)
+        raise SystemExit(1)
+    if asset.name.endswith((".tar.gz", ".zip")):
+        libraries.append((asset.name, hashlib.sha256(library_bytes).hexdigest()))
+lines = ["[sha256]"]
+for path in paths:
+    asset = Path(path)
+    digest = hashlib.sha256(asset.read_bytes()).hexdigest()
+    lines.append(f'"{{asset.name}}" = "{{digest}}"')
+lines.extend(["", "[library_sha256]"])
+lines.extend(f'"{{name}}" = "{{digest}}"' for name, digest in libraries)
+output.write_text("\\n".join(lines) + "\\n")
+''')
+            cargo.chmod(0o755)
+            environment = dict(os.environ, MODULE_ASSET="tinydocs-module", MODULE_VERSION="0.2.4",
+                               MODULE_SOURCE_BUNDLE="tinydocs",
+                               PATH=f"{fake_bin}:{os.environ['PATH']}", CAPTURE_CARGO_ARGS=str(capture))
+            result = subprocess.run(["bash", "-c", step["run"]], cwd=root, env=environment,
+                                    text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            args = capture.read_text().splitlines()
+            self.assertEqual(args.count("--path"), 17)
+            self.assertNotIn("release-assets/tinydocs-bus-0.2.4.crate", args)
+            self.assertNotIn("release-assets/tinybus-source-0123456789ab.tar.gz", args)
+            manifest = (release / "checksum.toml").read_text()
+            checksum_tables = parse_checksum_tables(manifest)
+            self.assertEqual(set(checksum_tables["sha256"]), {
+                *(f"tinydocs-module-0.2.4-{host}.{'zip' if host.startswith('windows-') else 'tar.gz'}" for host in hosts),
+                "tinydocs-bus-0.2.4.crate",
+                "tinybus-source-0123456789ab.tar.gz",
+            })
+            self.assertEqual(
+                checksum_tables["sha256"]["tinydocs-bus-0.2.4.crate"],
+                hashlib.sha256(b"bus crate").hexdigest(),
+            )
+            self.assertEqual(
+                checksum_tables["sha256"]["tinybus-source-0123456789ab.tar.gz"],
+                hashlib.sha256(source_archive.read_bytes()).hexdigest(),
+            )
+            self.assertEqual(set(checksum_tables["library_sha256"]), {
+                f"tinydocs-module-0.2.4-{host}.{'zip' if host.startswith('windows-') else 'tar.gz'}"
+                for host in hosts
+            })
+            self.assertNotIn("tinydocs-bus-0.2.4.crate", checksum_tables["library_sha256"])
+            self.assertNotIn("tinybus-source-0123456789ab.tar.gz", checksum_tables["library_sha256"])
+            expected_library_digest = hashlib.sha256(b"module library").hexdigest()
+            self.assertEqual(set(checksum_tables["library_sha256"].values()), {expected_library_digest})
+            for host in hosts:
+                extension = "zip" if host.startswith("windows-") else "tar.gz"
+                asset = release / f"tinydocs-module-0.2.4-{host}.{extension}"
+                self.assertEqual(
+                    checksum_tables["sha256"][asset.name],
+                    hashlib.sha256(asset.read_bytes()).hexdigest(),
+                )
+            self.assertEqual(len(checksum_tables["sha256"]), 19)
+            self.assertEqual(len(checksum_tables["library_sha256"]), 17)
+
+            module_archive = next(release.glob("tinydocs-module-*.tar.gz"))
+            module_archive.unlink()
+            result = subprocess.run(["bash", "-c", step["run"]], cwd=root, env=environment,
+                                    text=True, capture_output=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("expected 17 module archives in checksum input, found 16", result.stderr)
+
+    def test_tinyvoice_profile_uses_exact_nested_manifest_and_all_native_dependencies(self):
+        validate = self.workflow["jobs"]["validate"]
+        native = self.workflow["jobs"]["native"]
+        distro = self.workflow["jobs"]["distro"]
+        self.assertIn("crates/tinyvoice-module/Cargo.toml", str(validate))
+        self.assertIn("MODULE_APT_PACKAGES", str(native))
+        self.assertEqual(
+            VERIFY.MODULE_PROFILES["tinyhumansai/tinyvoice"]["apt_packages"],
+            "libasound2-dev libx11-dev libxtst-dev libxi-dev",
+        )
+        self.assertIn("scripts/test-distro.sh", str(distro))
+        apt_steps = [step for step in native["steps"] if "apt-get install" in step.get("run", "")]
+        self.assertEqual(len(apt_steps), 1)
+        self.assertEqual(apt_steps[0]["if"], "runner.os == 'Linux' && needs.preflight.outputs.module-apt-packages != ''")
+        self.assertIn("MODULE_APT_PACKAGES", apt_steps[0]["env"])
+        self.assertIn("module package and manifest are outside the compiled-in profile", str(validate))
+        self.assertIn("tinyvoice-module:crates/tinyvoice-module/Cargo.toml", str(validate))
+        self.assertIn("Ubuntu build dependencies are outside the compiled-in profile", str(validate))
+        self.assertEqual(len(distro["strategy"]["matrix"]["include"]), 6)
+        self.assertIn("MODULE_APT_PACKAGES", str(native))
 
 
 if __name__ == "__main__":
