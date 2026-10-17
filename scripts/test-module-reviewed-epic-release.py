@@ -708,7 +708,8 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("expected=17", workflow)
         self.assertIn("module-source-bundle", workflow)
         self.assertIn("needs.source_assets.result == 'success'", workflow)
-        self.assertIn("release-assets/${MODULE_ASSET}-${MODULE_VERSION}-*.tar.gz", workflow)
+        self.assertIn('-name "${MODULE_ASSET}-${MODULE_VERSION}-*.tar.gz"', workflow)
+        self.assertIn('-name "${MODULE_ASSET}-${MODULE_VERSION}-*.zip"', workflow)
 
     def test_tinydocs_sources_are_built_after_admission_and_merged_into_release_assets(self):
         jobs = self.workflow["jobs"]
@@ -810,6 +811,41 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
             next(step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@"))["with"]["name"],
             "tinydocs-source-assets",
         )
+
+    def test_module_checksum_count_excludes_tinydocs_source_archive_and_checks_all_module_outputs(self):
+        assemble = self.workflow["jobs"]["assemble"]
+        step = next(step for step in assemble["steps"] if "Require the complete archive set" in step.get("name", ""))
+        with tempfile.TemporaryDirectory() as root:
+            release = Path(root) / "release-assets"
+            release.mkdir()
+            hosts = [item["host"] for job_name in ("native", "distro")
+                     for item in self.workflow["jobs"][job_name]["strategy"]["matrix"]["include"]]
+            for host in hosts:
+                extension = "zip" if host.startswith("windows-") else "tar.gz"
+                (release / f"tinydocs-module-0.2.4-{host}.{extension}").write_bytes(b"module")
+            (release / "tinybus-source-0123456789ab.tar.gz").write_bytes(b"pinned source")
+            (release / "tinydocs-bus-0.2.4.crate").write_bytes(b"bus crate")
+            fake_bin = Path(root) / "bin"
+            fake_bin.mkdir()
+            capture = Path(root) / "cargo-args"
+            cargo = fake_bin / "cargo"
+            cargo.write_text("#!/bin/sh\\nprintf '%s\\n' \\\"$@\\\" > \\\"$CAPTURE_CARGO_ARGS\\\"\\n")
+            cargo.chmod(0o755)
+            environment = dict(os.environ, MODULE_ASSET="tinydocs-module", MODULE_VERSION="0.2.4",
+                               PATH=f"{fake_bin}:{os.environ['PATH']}", CAPTURE_CARGO_ARGS=str(capture))
+            result = subprocess.run(["bash", "-c", step["run"]], cwd=root, env=environment,
+                                    text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            args = capture.read_text().splitlines()
+            self.assertEqual(args.count("--path"), 17)
+            self.assertTrue(all("tinybus-source" not in value for value in args))
+
+            module_archive = next(release.glob("tinydocs-module-*.tar.gz"))
+            module_archive.unlink()
+            result = subprocess.run(["bash", "-c", step["run"]], cwd=root, env=environment,
+                                    text=True, capture_output=True)
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("expected 17 module archives, found 16", result.stderr)
 
     def test_tinyvoice_profile_uses_exact_nested_manifest_and_all_native_dependencies(self):
         validate = self.workflow["jobs"]["validate"]
