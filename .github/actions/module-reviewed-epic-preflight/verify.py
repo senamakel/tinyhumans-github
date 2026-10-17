@@ -45,6 +45,11 @@ MODULE_PROFILES = {
         "extra_files": [], "workflow_id": 339480400,
         "module_ci_sha": "62c8ae0468f3882b75947d5cba9687e609ce1fed",
     },
+    "tinyhumansai/tinychannels": {
+        "package": "tinychannels-module", "asset": "tinychannels-module", "manifest": "Cargo.toml",
+        "extra_files": [], "workflow_id": 307289287,
+        "module_ci_sha": "3e87ade76b622844985d0c665a3b075313e4545c",
+    },
 }
 MODULE_PACKAGES = {repo: profile["package"] for repo, profile in MODULE_PROFILES.items()}
 CI_WORKFLOW_IDS = {repo: profile["workflow_id"] for repo, profile in MODULE_PROFILES.items()}
