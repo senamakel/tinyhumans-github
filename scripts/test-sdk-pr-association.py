@@ -225,6 +225,7 @@ class WorkflowPullAssociationTests(unittest.TestCase):
         fake = base_tests.reviewed_release_fixture(self.verify.verify)
         head = fake.heads[75]
         pending = dict(fake.workflow_runs[head][0], run_attempt=2, status="in_progress", conclusion=None)
+        pending["pull_requests"] = []
         fake.workflow_runs[head].append(pending)
         fake.workflow_jobs[(pending["id"], pending["run_attempt"])] = fake.workflow_jobs[
             (pending["id"], 1)
@@ -259,7 +260,7 @@ def valid_checkout_log(synthetic_sha, pull_number, *, late_prelude=False, duplic
 
 
 def runner_line(message):
-    return f"module-ci / fmt\tUNKNOWN STEP\t2026-10-17T09:38:22.8052667Z {message}"
+    return f"2026-10-17T09:38:22.8052667Z {message}"
 
 
 def attacker_prelude_log(synthetic_sha, pull_number):

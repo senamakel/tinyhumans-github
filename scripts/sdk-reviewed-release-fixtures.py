@@ -217,7 +217,7 @@ def sha(value):
 
 def _fmt_job_log(synthetic_sha, pull_number):
     def line(message):
-        return f"module-ci / fmt\tUNKNOWN STEP\t2026-10-17T09:38:22.8052667Z {message}"
+        return f"2026-10-17T09:38:22.8052667Z {message}"
 
     return "\n".join([
         line("Uses: tinyhumansai/.github/.github/workflows/module-ci.yml@"
