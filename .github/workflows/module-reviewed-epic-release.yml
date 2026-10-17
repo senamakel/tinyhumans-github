@@ -414,7 +414,8 @@ jobs:
               finally:
                   shutil.rmtree(staging)
 
-          merge("tinydocs", sys.argv[1], sys.argv[2], sys.argv[3])
+          if __name__ == "__main__":
+              merge("tinydocs", sys.argv[1], sys.argv[2], sys.argv[3])
           PYTHON
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
