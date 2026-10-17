@@ -11,6 +11,8 @@ only the canonical module repositories and package identities below:
 | `tinyhumansai/tinybox` | `tinybox` | `334144667` |
 | `tinyhumansai/tinyjuice` | `tinyjuice` | `307270985` |
 | `tinyhumansai/tinywallet` | `tinywallet-module` | `331024528` |
+| `tinyhumansai/tinymcp` | `tinymcp` | `339480400` |
+| `tinyhumansai/tinychannels` | `tinychannels-module` | `307289287` |
 
 The map is compiled into the verifier. Caller inputs cannot choose a
 repository, package, CI workflow ID, required check profile, epic branch, or
@@ -70,7 +72,7 @@ No module repository, Cargo manifest, or Cargo source is in scope.
 
 ## Test-first sequence
 
-1. Add offline fixtures and workflow assertions for all four profiles and
+1. Add offline fixtures and workflow assertions for all six profiles and
    rejection of unlisted repos/packages/workflow IDs, wrong epic bases, bad
    merge ancestry, direct pushes, false PR associations, failed/missing or
    stale CI attempts, incorrect workflow/check app/pin, incomplete pagination,

@@ -112,8 +112,8 @@ and its main-ancestor gate. Remove the temporary caller/path before the epic's
 final rollup; after the epic is merged to main, release from the main-based
 entrypoint.
 
-For the same migration only, `tinyconnectors`, `tinybox`, `tinyjuice`, and
-`tinywallet` may
+For the same migration only, `tinyconnectors`, `tinybox`, `tinyjuice`,
+`tinywallet`, `tinymcp`, and `tinychannels` may
 temporarily call `module-reviewed-epic-release.yml` with a positive
 `reviewed-pr`. Its verifier has a compiled-in canonical repository/package/
 workflow-ID map and checks the complete reviewed epic path and the same 13
@@ -136,6 +136,7 @@ The verifier's profiles are literal and closed:
 | `tinyhumansai/tinyjuice` | `tinyjuice-module` | `tinyjuice` | `307270985` | `3e87ade76b622844985d0c665a3b075313e4545c` | `Cargo.toml` | `docs/specs/tinybus-module.md` |
 | `tinyhumansai/tinywallet` | `tinywallet-module` | `tinywallet-module` | `331024528` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none |
 | `tinyhumansai/tinymcp` | `tinymcp` | `tinymcp` | `339480400` | `62c8ae0468f3882b75947d5cba9687e609ce1fed` | `Cargo.toml` | none |
+| `tinyhumansai/tinychannels` | `tinychannels-module` | `tinychannels-module` | `307289287` | `3e87ade76b622844985d0c665a3b075313e4545c` | `Cargo.toml` | none |
 
 The TinyJuice profile keeps the pin used by its reviewed release workflow. At
 that revision the check names and fmt checkout match the newer module CI
@@ -155,6 +156,12 @@ reviewed reusable `module-ci.yml` pin is
 `62c8ae0468f3882b75947d5cba9687e609ce1fed`. That pin is specific to TinyMCP;
 the byte-identical fmt checkout block does not make another module's reusable
 workflow revision valid for its history.
+
+The TinyChannels profile is bound to canonical workflow ID `307289287` and
+trusted reusable workflow pin
+`3e87ade76b622844985d0c665a3b075313e4545c`. It packages only the
+`tinychannels-module` cdylib from the root `Cargo.toml`, with no additional
+files.
 
 Add another repository only through a separately reviewed update to this
 allowlist, including its actual canonical CI workflow identity and package

@@ -39,7 +39,7 @@ FIXTURE_SPEC.loader.exec_module(FIXTURES)
 
 
 class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
-    def test_only_five_exact_canonical_repository_package_workflow_profiles_exist(self):
+    def test_only_six_exact_canonical_repository_package_workflow_profiles_exist(self):
         self.assertEqual(
             VERIFY.CI_WORKFLOW_IDS,
             {
@@ -48,6 +48,7 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinyjuice": 307270985,
                 "tinyhumansai/tinywallet": 331024528,
                 "tinyhumansai/tinymcp": 339480400,
+                "tinyhumansai/tinychannels": 307289287,
             },
         )
         self.assertEqual(
@@ -58,6 +59,7 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinyjuice": "3e87ade76b622844985d0c665a3b075313e4545c",
                 "tinyhumansai/tinywallet": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
                 "tinyhumansai/tinymcp": "62c8ae0468f3882b75947d5cba9687e609ce1fed",
+                "tinyhumansai/tinychannels": "3e87ade76b622844985d0c665a3b075313e4545c",
             },
         )
         self.assertEqual(
@@ -68,6 +70,7 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinyjuice": "tinyjuice-module",
                 "tinyhumansai/tinywallet": "tinywallet-module",
                 "tinyhumansai/tinymcp": "tinymcp",
+                "tinyhumansai/tinychannels": "tinychannels-module",
             },
         )
         self.assertEqual(VERIFY.CHECK_APP_ID, 15368)
@@ -86,6 +89,8 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         )
         self.assertEqual(VERIFY.MODULE_PROFILES["tinyhumansai/tinywallet"]["asset"], "tinywallet-module")
         self.assertEqual(VERIFY.MODULE_PROFILES["tinyhumansai/tinywallet"]["extra_files"], [])
+        self.assertEqual(VERIFY.MODULE_PROFILES["tinyhumansai/tinychannels"]["asset"], "tinychannels-module")
+        self.assertEqual(VERIFY.MODULE_PROFILES["tinyhumansai/tinychannels"]["extra_files"], [])
         self.assertEqual(
             VERIFY.MODULE_PROFILES["tinyhumansai/tinyjuice"]["extra_files"],
             ["docs/specs/tinybus-module.md"],
@@ -96,6 +101,14 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "package": "tinymcp", "asset": "tinymcp", "manifest": "Cargo.toml",
                 "extra_files": [], "workflow_id": 339480400,
                 "module_ci_sha": "62c8ae0468f3882b75947d5cba9687e609ce1fed",
+            },
+        )
+        self.assertEqual(
+            VERIFY.MODULE_PROFILES["tinyhumansai/tinychannels"],
+            {
+                "package": "tinychannels-module", "asset": "tinychannels-module", "manifest": "Cargo.toml",
+                "extra_files": [], "workflow_id": 307289287,
+                "module_ci_sha": "3e87ade76b622844985d0c665a3b075313e4545c",
             },
         )
 
@@ -199,6 +212,33 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
             "4adc1080fb495098e7af1aade82ed7e6e3c69bb7"
         )
         with self.assertRaisesRegex(VERIFY.VerificationError, "workflow pin was not trusted"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            )
+
+    def test_tinychannels_profile_accepts_only_its_canonical_package_and_ci_evidence(self):
+        repository = "tinyhumansai/tinychannels"
+        package = "tinychannels-module"
+        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+        self.assertEqual(
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            ),
+            fake.tag_sha,
+        )
+        for bad_repository, bad_package in (
+            ("tinyhumansai/tinychannels-untrusted", package),
+            (repository, "tinychannels"),
+        ):
+            with self.subTest(repository=bad_repository, package=bad_package):
+                with self.assertRaises(VERIFY.VerificationError):
+                    VERIFY.verify_reviewed_release(
+                        fake.api, lambda *_: fake.git, bad_repository, "v0.1.7", "0.1.7",
+                        bad_package, 75,
+                    )
+        run = fake.api.workflow_runs[fake.heads[75]][0]
+        run["workflow_id"] = 339480400
+        with self.assertRaisesRegex(VERIFY.VerificationError, "workflow"):
             VERIFY.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
             )
@@ -506,6 +546,7 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         )
         self.assertEqual(pinned_verifier.returncode, 0, "pinned action must contain its verifier")
         self.assertIn('"tinyhumansai/tinymcp"', pinned_verifier.stdout)
+        self.assertIn('"tinyhumansai/tinychannels"', pinned_verifier.stdout)
 
 
 class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
