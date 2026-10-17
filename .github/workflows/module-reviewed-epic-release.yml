@@ -359,8 +359,12 @@ jobs:
           MODULE_VERSION: ${{ inputs.version }}
         run: |
           set -euo pipefail
-          shopt -s nullglob
-          archives=(release-assets/${MODULE_ASSET}-${MODULE_VERSION}-*.tar.gz release-assets/${MODULE_ASSET}-${MODULE_VERSION}-*.zip)
+          archives=()
+          while IFS= read -r archive; do archives+=("$archive"); done < <(
+            find release-assets -maxdepth 1 -type f \
+              \( -name "${MODULE_ASSET}-${MODULE_VERSION}-*.tar.gz" \
+              -o -name "${MODULE_ASSET}-${MODULE_VERSION}-*.zip" \) -print
+          )
           expected=17
           if [[ "${#archives[@]}" -ne "$expected" ]]; then
             echo "expected $expected module archives, found ${#archives[@]}" >&2
