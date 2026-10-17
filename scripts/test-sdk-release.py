@@ -189,17 +189,17 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
             "v0.1.7",
             "0.1.7",
             "tinybus",
-            73,
+            75,
         )
         self.assertEqual(source, fake.tag_sha)
-        self.assertEqual(fake.checked_heads, [fake.heads[73], fake.heads[74], fake.heads[72]])
+        self.assertEqual(fake.checked_heads, [fake.heads[75], fake.heads[73], fake.heads[74], fake.heads[72]])
 
         fake = reviewed_release_fixture(self.verify)
         fake.parents[fake.tag_sha] = (fake.merges[74], "e" * 40)
         with self.assertRaisesRegex(self.verify.VerificationError, "exact merged pull request"):
             self.verify.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
-                "0.1.7", "tinybus", 73,
+                "0.1.7", "tinybus", 75,
             )
 
         fake = reviewed_release_fixture(self.verify)
@@ -207,7 +207,7 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(self.verify.VerificationError, "merged pull request"):
             self.verify.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
-                "0.1.7", "tinybus", 73,
+                "0.1.7", "tinybus", 75,
             )
 
         fake = reviewed_release_fixture(self.verify)
@@ -215,7 +215,7 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(self.verify.VerificationError, "two-parent"):
             self.verify.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
-                "0.1.7", "tinybus", 73,
+                "0.1.7", "tinybus", 75,
             )
 
     def test_review_state_is_effective_across_heads_and_threads_fail_closed(self):
@@ -231,15 +231,15 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(self.verify.VerificationError, "changes-requested"):
             self.verify.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
-                "0.1.7", "tinybus", 73,
+                "0.1.7", "tinybus", 75,
             )
 
         fake = reviewed_release_fixture(self.verify)
-        fake.threads[73] = [{"isResolved": False, "isOutdated": True}]
+        fake.threads[75] = [{"isResolved": False, "isOutdated": True}]
         with self.assertRaisesRegex(self.verify.VerificationError, "unresolved review thread"):
             self.verify.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
-                "0.1.7", "tinybus", 73,
+                "0.1.7", "tinybus", 75,
             )
 
     def test_required_check_names_provenance_and_success_are_all_mandatory(self):
@@ -248,7 +248,7 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(self.verify.VerificationError, "trusted CI check"):
             self.verify.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
-                "0.1.7", "tinybus", 73,
+                "0.1.7", "tinybus", 75,
             )
 
         fake = reviewed_release_fixture(self.verify)
@@ -263,7 +263,7 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(self.verify.VerificationError, "not successful"):
             self.verify.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
-                "0.1.7", "tinybus", 73,
+                "0.1.7", "tinybus", 75,
             )
 
         fake = reviewed_release_fixture(self.verify)
