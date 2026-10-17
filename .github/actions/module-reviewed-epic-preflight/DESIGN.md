@@ -13,6 +13,8 @@ only the canonical module repositories and package identities below:
 | `tinyhumansai/tinywallet` | `tinywallet-module` | `331024528` |
 | `tinyhumansai/tinymcp` | `tinymcp` | `339480400` |
 | `tinyhumansai/tinychannels` | `tinychannels-module` | `307289287` |
+| `tinyhumansai/tinydocs` | `tinydocs-module` | `331024957` |
+| `tinyhumansai/tinyvoice` | `tinyvoice-module` | `333928426` |
 
 The map is compiled into the verifier. Caller inputs cannot choose a
 repository, package, CI workflow ID, required check profile, epic branch, or
@@ -41,10 +43,11 @@ never checks out or executes tagged code.
 
 Only after admission does the new workflow run module source. Every
 source-executing job (metadata validation, native builds, distro builds, and
-asset assembly/checksum generation) must directly depend on successful
-preflight, check out its emitted source SHA with `persist-credentials: false`,
-and use no API token. Both build matrices are fixed: all 11 native artifacts
-and all 6 distro artifacts. The module package verification remains enabled.
+asset assembly/checksum generation, plus the TinyDocs source-assets job) must
+directly depend on successful preflight, check out its emitted source SHA with
+`persist-credentials: false`, and use no API token. Both build matrices are
+fixed: all 11 native artifacts and all 6 distro artifacts. The module package
+verification remains enabled.
 Assembly requires successful preflight, metadata validation, native jobs, and
 distro jobs; it cannot turn a skipped or failed prerequisite into success.
 
@@ -56,6 +59,24 @@ path or registry secret.
 
 The ordinary `module-release.yml` and all existing SDK workflow/action files
 remain byte-for-byte unchanged.
+
+TinyDocs is the only profile with a source bundle. Its source-assets job runs
+after preflight and metadata validation, checks out the admitted SHA, packages
+only `tinydocs-bus`, and archives the checked-out `vendor/tinybus` gitlink.
+Assembly accepts exactly those two flat files, rejects symlinks, extra files,
+and collisions, and adds them to the same uploaded release-assets artifact
+after generating the module checksum manifest. The module checksum count
+matches only the 17 profile-stem/version module archives; the immutable
+release retry comparison covers the complete assembled asset set, including
+both TinyDocs source files.
+
+TinyVoice uses only its compiled-in nested manifest
+`crates/tinyvoice-module/Cargo.toml` and the Ubuntu native build dependency
+list `libasound2-dev libx11-dev libxtst-dev libxi-dev`. The six Fedora/Arch
+builds continue to run TinyVoice's pinned `scripts/test-distro.sh`, whose
+`scripts/install-distro-packages.sh` installs the corresponding distro-native
+audio and X11 packages. The caller cannot supply either the manifest or a
+package list.
 
 ## Files and ownership
 

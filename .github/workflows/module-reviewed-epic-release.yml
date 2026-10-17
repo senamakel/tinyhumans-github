@@ -298,18 +298,27 @@ jobs:
             echo "TinyDocs source crate is missing: $package_archive" >&2
             exit 1
           }
-          revision="$(git -C vendor/tinybus rev-parse --short=12 HEAD)"
-          [[ "$revision" =~ ^[0-9a-f]{12}$ ]] || {
+          [[ -d vendor/tinybus && ! -L vendor/tinybus ]] || {
+            echo "pinned TinyBus source checkout is missing or symlinked" >&2
+            exit 1
+          }
+          revision="$(git -C vendor/tinybus rev-parse --verify HEAD)"
+          [[ "$revision" =~ ^[0-9a-f]{40}$ ]] || {
             echo "pinned TinyBus source revision is invalid" >&2
             exit 1
           }
-          mkdir -p source-assets
+          revision_short="${revision:0:12}"
+          [[ ! -e source-assets && ! -L source-assets ]] || {
+            echo "source asset output directory already exists" >&2
+            exit 1
+          }
+          mkdir source-assets
           cp "$package_archive" source-assets/
-          git -C vendor/tinybus archive --format=tar.gz --prefix="tinybus-${revision}/" \
-            --output="$PWD/source-assets/tinybus-source-${revision}.tar.gz" HEAD
+          git -C vendor/tinybus archive --format=tar.gz --prefix="tinybus-${revision_short}/" \
+            --output="$PWD/source-assets/tinybus-source-${revision_short}.tar.gz" "$revision"
           shopt -s nullglob
           assets=(source-assets/*)
-          [[ "${#assets[@]}" -eq 2 && -f "${assets[0]}" && ! -L "${assets[0]}" && -f "${assets[1]}" && ! -L "${assets[1]}" ]] || {
+          [[ ! -L source-assets && "${#assets[@]}" -eq 2 && -f "${assets[0]}" && ! -L "${assets[0]}" && -f "${assets[1]}" && ! -L "${assets[1]}" ]] || {
             echo "TinyDocs source job emitted an unexpected asset set" >&2
             exit 1
           }

@@ -777,13 +777,32 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
                 merge("tinydocs", "0.2.4", source, destination)
             self.assertEqual(list(destination.iterdir()), [])
 
+        with tempfile.TemporaryDirectory() as root:
+            source, destination = Path(root) / "source", Path(root) / "release"
+            source.mkdir(); destination.mkdir()
+            crate = source / "tinydocs-bus-0.2.4.crate"
+            bus = source / "tinybus-source-0123456789ab.tar.gz"
+            crate.write_bytes(b"crate")
+            bus.symlink_to(crate)
+            with self.assertRaisesRegex(ValueError, "exact source asset set"):
+                merge("tinydocs", "0.2.4", source, destination)
+            bus.unlink()
+            bus.write_bytes(b"bus source")
+            with self.assertRaisesRegex(ValueError, "version"):
+                merge("tinydocs", "../0.2.4", source, destination)
+            (destination / crate.name).write_bytes(b"verified")
+            with self.assertRaisesRegex(ValueError, "collides"):
+                merge("tinydocs", "0.2.4", source, destination)
+            self.assertEqual((destination / crate.name).read_bytes(), b"verified")
+            self.assertEqual(len(list(destination.iterdir())), 1)
+
     def test_tinydocs_source_job_packages_only_after_verified_source_checkout(self):
         job = self.workflow["jobs"]["source_assets"]
         script = str(job)
         self.assertIn("cargo package --locked --package tinydocs-bus", script)
         self.assertNotIn("--no-verify", script)
         self.assertIn("git -C vendor/tinybus archive", script)
-        self.assertIn("git -C vendor/tinybus rev-parse --short=12 HEAD", script)
+        self.assertIn("git -C vendor/tinybus rev-parse --verify HEAD", script)
         self.assertIn("tinydocs-bus-${MODULE_VERSION}.crate", script)
         self.assertEqual(
             next(step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@"))["with"]["name"],
