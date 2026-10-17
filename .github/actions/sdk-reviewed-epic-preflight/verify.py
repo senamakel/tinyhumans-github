@@ -423,6 +423,7 @@ def _validate_pull(pull: dict, repository: str, merge_sha: str) -> dict:
         "head_ref": head_ref,
         "head_repository": head_repository,
         "author": author.get("login"),
+        "merge_sha": _sha(pull.get("merge_commit_sha"), "pull request merge"),
     }
 
 
@@ -471,6 +472,7 @@ def _verify_required_checks(api, pull: dict) -> None:
         and run.get("check_suite_id") is not None
     ]
     associated_runs = []
+    empty_association_runs = []
     for run in canonical_runs:
         associated_pulls = run.get("pull_requests")
         if not isinstance(associated_pulls, list):

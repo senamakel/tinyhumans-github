@@ -23,7 +23,7 @@ def verify_empty_association(api, workflow_run: dict, job: dict, pull: dict) -> 
     synthetic_parents = api.commit_parents(synthetic_sha)
     reviewed_parents = api.commit_parents(pull["merge_sha"])
     if synthetic_parents != reviewed_parents:
-        raise api.verification_error("historical CI checkout parents did not match the reviewed merge")
+        raise ValueError("historical CI checkout parents did not match the reviewed merge")
 
 
 def _verify_reusable_workflow_pin(workflow_run: dict) -> None:
