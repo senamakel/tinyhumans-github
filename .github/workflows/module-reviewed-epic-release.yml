@@ -379,8 +379,8 @@ jobs:
           import sys
           import tempfile
 
-          SEMVER = re.compile(r"^[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$")
-          TINYBUS_ARCHIVE = re.compile(r"^tinybus-source-[0-9a-f]{12}\\.tar\\.gz$")
+          SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$")
+          TINYBUS_ARCHIVE = re.compile(r"^tinybus-source-[0-9a-f]{12}\.tar\.gz$")
 
           def merge(bundle, version, source, destination):
               if bundle != "tinydocs":
