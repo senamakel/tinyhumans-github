@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tomllib
 import tarfile
 import tempfile
 import unittest
@@ -802,6 +803,53 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
                 merge("tinydocs", "0.2.4", source, destination)
             self.assertEqual((destination / crate.name).read_bytes(), b"verified")
             self.assertEqual(len(list(destination.iterdir())), 1)
+
+    def test_source_checksums_stay_in_sha256_table_when_library_table_is_present(self):
+        assemble = self.workflow["jobs"]["assemble"]
+        step = next(step for step in assemble["steps"] if "Checksum the exact module and source asset set" in step.get("name", ""))
+        marker = 'if [[ "$MODULE_SOURCE_BUNDLE" == "tinydocs" ]]; then\n'
+        start = step["run"].index(marker, step["run"].index("cargo run"))
+        end = step["run"].index("\nfi", start) + len("\nfi")
+        source_writer = step["run"][start:end]
+        hosts = [item["host"] for job_name in ("native", "distro")
+                 for item in self.workflow["jobs"][job_name]["strategy"]["matrix"]["include"]]
+        module_names = {
+            f"tinydocs-module-0.2.4-{host}.{'zip' if host.startswith('windows-') else 'tar.gz'}"
+            for host in hosts
+        }
+        source_hashes = {
+            "tinydocs-bus-0.2.4.crate": hashlib.sha256(b"bus crate").hexdigest(),
+            "tinybus-source-0123456789ab.tar.gz": hashlib.sha256(b"pinned source").hexdigest(),
+        }
+        old_library_hashes = {name: "b" * 64 for name in module_names}
+        old_archive_hashes = {name: "a" * 64 for name in module_names}
+        with tempfile.TemporaryDirectory() as root:
+            release = Path(root) / "release-assets"
+            release.mkdir()
+            for name, data in (("tinydocs-bus-0.2.4.crate", b"bus crate"),
+                               ("tinybus-source-0123456789ab.tar.gz", b"pinned source")):
+                (release / name).write_bytes(data)
+            lines = ["[sha256]"]
+            lines.extend(f'"{name}" = "{digest}"' for name, digest in old_archive_hashes.items())
+            lines.extend(["", "[library_sha256]"])
+            lines.extend(f'"{name}" = "{digest}"' for name, digest in old_library_hashes.items())
+            manifest_path = release / "checksum.toml"
+            manifest_path.write_text("\n".join(lines) + "\n")
+            paths = [f"release-assets/{name}" for name in source_hashes]
+            script = f'source_assets=({" ".join(paths)})\n{source_writer}\n'
+            result = subprocess.run(
+                ["bash", "-c", script], cwd=root,
+                env=dict(os.environ, MODULE_SOURCE_BUNDLE="tinydocs"),
+                text=True, capture_output=True,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            checksums = tomllib.loads(manifest_path.read_text())
+            self.assertEqual(set(checksums["sha256"]), module_names | set(source_hashes))
+            self.assertEqual(set(checksums["library_sha256"]), module_names)
+            for name, digest in source_hashes.items():
+                self.assertEqual(checksums["sha256"][name], digest)
+                self.assertNotIn(name, checksums["library_sha256"])
+            self.assertEqual(checksums["library_sha256"], old_library_hashes)
 
     def test_tinydocs_source_job_packages_only_after_verified_source_checkout(self):
         job = self.workflow["jobs"]["source_assets"]
