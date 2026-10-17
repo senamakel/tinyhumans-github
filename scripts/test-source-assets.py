@@ -12,7 +12,7 @@ reviewed_spec = importlib.util.spec_from_file_location(
     Path(__file__).with_name("merge-reviewed-source-assets.py"),
 )
 reviewed_module = None
-if reviewed_spec is not None and reviewed_spec.loader is not None:
+if reviewed_spec is not None and reviewed_spec.loader is not None and Path(reviewed_spec.origin).is_file():
     reviewed_module = importlib.util.module_from_spec(reviewed_spec)
     reviewed_spec.loader.exec_module(reviewed_module)
 
