@@ -111,6 +111,28 @@ class CheckoutSubmodulesTests(unittest.TestCase):
         self.assertNotIn("safe.directory", (self.home / ".gitconfig").read_text()
                          if (self.home / ".gitconfig").exists() else "")
 
+    def test_stale_top_level_declaration_does_not_hide_valid_submodules(self):
+        git(self.work, "config", "--file", ".gitmodules", "submodule.missing.path", "vendor/missing")
+        git(self.work, "config", "--file", ".gitmodules", "submodule.missing.url", (self.origin / "gone").as_uri())
+        out = self.run_script()
+        self.assertIn("checked out 5 submodules, skipped 0", out)
+        self.assertTrue(self.cloned("vendor/lib/vendor/leaf"))
+        self.assertFalse((self.work / "vendor/missing").exists())
+
+    def test_nested_declaration_without_gitlink_ignores_a_tracked_file(self):
+        lib = self.origin / "lib"
+        git(lib, "config", "--file", ".gitmodules", "submodule.stale.path", "README")
+        git(lib, "config", "--file", ".gitmodules", "submodule.stale.url", (self.origin / "gone").as_uri())
+        git(lib, "add", ".gitmodules")
+        git(lib, "commit", "-q", "-m", "stale nested declaration")
+        revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=lib, env=ENV,
+                                  check=True, capture_output=True, text=True).stdout.strip()
+        git(self.work, "update-index", "--cacheinfo", f"160000,{revision},vendor/lib")
+        out = self.run_script()
+        self.assertIn("checked out 5 submodules, skipped 0", out)
+        self.assertTrue(self.cloned("vendor/lib/vendor/leaf"))
+        self.assertEqual((self.work / "vendor/lib/README").read_text(), "lib")
+
     def test_a_failed_clone_fails_the_script(self):
         (self.origin / "leaf").rename(self.origin / "gone")
         result = subprocess.run([str(SCRIPT), str(self.work)], env=ENV, capture_output=True)
