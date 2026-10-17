@@ -39,7 +39,7 @@ FIXTURE_SPEC.loader.exec_module(FIXTURES)
 
 
 class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
-    def test_only_four_exact_canonical_repository_package_workflow_profiles_exist(self):
+    def test_only_five_exact_canonical_repository_package_workflow_profiles_exist(self):
         self.assertEqual(
             VERIFY.CI_WORKFLOW_IDS,
             {
@@ -47,6 +47,7 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinybox": 334144667,
                 "tinyhumansai/tinyjuice": 307270985,
                 "tinyhumansai/tinywallet": 331024528,
+                "tinyhumansai/tinymcp": 339480400,
             },
         )
         self.assertEqual(
@@ -56,6 +57,7 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinybox": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
                 "tinyhumansai/tinyjuice": "3e87ade76b622844985d0c665a3b075313e4545c",
                 "tinyhumansai/tinywallet": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+                "tinyhumansai/tinymcp": "62c8ae0468f3882b75947d5cba9687e609ce1fed",
             },
         )
         self.assertEqual(
@@ -65,6 +67,7 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinybox": "tinybox-module",
                 "tinyhumansai/tinyjuice": "tinyjuice-module",
                 "tinyhumansai/tinywallet": "tinywallet-module",
+                "tinyhumansai/tinymcp": "tinymcp",
             },
         )
         self.assertEqual(VERIFY.CHECK_APP_ID, 15368)
@@ -86,6 +89,14 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         self.assertEqual(
             VERIFY.MODULE_PROFILES["tinyhumansai/tinyjuice"]["extra_files"],
             ["docs/specs/tinybus-module.md"],
+        )
+        self.assertEqual(
+            VERIFY.MODULE_PROFILES["tinyhumansai/tinymcp"],
+            {
+                "package": "tinymcp", "asset": "tinymcp", "manifest": "Cargo.toml",
+                "extra_files": [], "workflow_id": 339480400,
+                "module_ci_sha": "62c8ae0468f3882b75947d5cba9687e609ce1fed",
+            },
         )
 
     def test_tag_only_recheck_requires_same_canonical_profile_and_sha(self):
