@@ -427,7 +427,7 @@ def verify_reviewed_release(api, git_factory, repository: str, tag: str, version
 def _validate_inputs(repository: str, tag: str, version: str, package: str, reviewed_pr: int):
     _validate_module(repository, package)
     if not SEMVER.fullmatch(version) or tag != f"v{version}":
-        raise VerificationError("release tag and SDK version must be matching semver values")
+        raise VerificationError("release tag and module version must be matching semver values")
     if not isinstance(reviewed_pr, int) or reviewed_pr < 1:
         raise VerificationError("reviewed pull request number must be a positive integer")
 
