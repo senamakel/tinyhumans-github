@@ -127,7 +127,7 @@ against the verified SHA. It has no crates.io path. Remove this temporary
 workflow and action before the epic's final rollup; once the epic reaches main,
 use the unchanged `module-release.yml` entrypoint.
 
-The verifier's initial profiles are literal and closed:
+The verifier's profiles are literal and closed:
 
 | Canonical repository | Cargo package | Asset stem | CI workflow ID | `module-ci.yml` pin | Manifest | Extra package files |
 | --- | --- | --- | ---: | --- | --- | --- |
@@ -135,6 +135,7 @@ The verifier's initial profiles are literal and closed:
 | `tinyhumansai/tinybox` | `tinybox-module` | `tinybox` | `334144667` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none |
 | `tinyhumansai/tinyjuice` | `tinyjuice-module` | `tinyjuice` | `307270985` | `3e87ade76b622844985d0c665a3b075313e4545c` | `Cargo.toml` | `docs/specs/tinybus-module.md` |
 | `tinyhumansai/tinywallet` | `tinywallet-module` | `tinywallet-module` | `331024528` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none |
+| `tinyhumansai/tinymcp` | `tinymcp` | `tinymcp` | `339480400` | `62c8ae0468f3882b75947d5cba9687e609ce1fed` | `Cargo.toml` | none |
 
 The TinyJuice profile keeps the pin used by its reviewed release workflow. At
 that revision the check names and fmt checkout match the newer module CI
@@ -146,6 +147,14 @@ The TinyWallet profile follows its package-derived `tinywallet-module` archive
 name and has no extra checked-in package files. Its Rust 1.85 MSRV applies to
 the declared public library targets; the module E2E job intentionally uses
 Rust 1.88, so that job does not broaden the public MSRV claim.
+
+The TinyMCP profile uses the virtual workspace root manifest for metadata and
+build commands; its `tinymcp` cdylib package lives under `crates/tinymcp`. Its
+canonical `.github/workflows/ci.yml` workflow is ID `339480400` and its
+reviewed reusable `module-ci.yml` pin is
+`62c8ae0468f3882b75947d5cba9687e609ce1fed`. That pin is specific to TinyMCP;
+the byte-identical fmt checkout block does not make another module's reusable
+workflow revision valid for its history.
 
 Add another repository only through a separately reviewed update to this
 allowlist, including its actual canonical CI workflow identity and package

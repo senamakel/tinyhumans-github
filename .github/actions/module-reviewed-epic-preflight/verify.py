@@ -40,6 +40,11 @@ MODULE_PROFILES = {
         "extra_files": [], "workflow_id": 331024528,
         "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
     },
+    "tinyhumansai/tinymcp": {
+        "package": "tinymcp", "asset": "tinymcp", "manifest": "Cargo.toml",
+        "extra_files": [], "workflow_id": 339480400,
+        "module_ci_sha": "62c8ae0468f3882b75947d5cba9687e609ce1fed",
+    },
 }
 MODULE_PACKAGES = {repo: profile["package"] for repo, profile in MODULE_PROFILES.items()}
 CI_WORKFLOW_IDS = {repo: profile["workflow_id"] for repo, profile in MODULE_PROFILES.items()}
