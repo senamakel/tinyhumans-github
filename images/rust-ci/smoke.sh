@@ -15,6 +15,23 @@ cargo nextest --version
 tinymold --version
 sccache --version
 mongod --version | head -1
+mongod --version | head -1 | grep -F "v${RUST_CI_MONGODB_MAJOR}."
+mongo_dir="${CARGO_HOME}/target/rust-ci-mongo-smoke"
+mkdir -p "$mongo_dir"
+mongod --fork --bind_ip 127.0.0.1 --port 27027 --replSet rust_ci_smoke \
+  --dbpath "$mongo_dir" --logpath "$mongo_dir/mongod.log"
+trap 'mongod --shutdown --dbpath "$mongo_dir"; rm -rf "$mongo_dir"' EXIT
+mongosh --quiet --port 27027 --eval 'rs.initiate({_id:"rust_ci_smoke",members:[{_id:0,host:"127.0.0.1:27027"}]})'
+ready=0
+for attempt in {1..30}; do
+  if mongosh --quiet --port 27027 --eval 'quit(db.hello().isWritablePrimary ? 0 : 1)'; then ready=1; break; fi
+  sleep 1
+done
+test "$ready" = 1
+mongosh --quiet --port 27027 --eval 'const s=db.getMongo().startSession(); s.startTransaction(); s.getDatabase("smoke").probe.insertOne({ok:true}); s.commitTransaction(); s.endSession()'
+mongod --shutdown --dbpath "$mongo_dir"
+rm -rf "$mongo_dir"
+trap - EXIT
 mongosh --version
 mold --version
 jq --version
