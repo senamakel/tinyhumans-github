@@ -837,45 +837,46 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         add_source_checksums = namespace["add_source_checksums"]
         hosts = [item["host"] for job_name in ("native", "distro")
                  for item in self.workflow["jobs"][job_name]["strategy"]["matrix"]["include"]]
-        module_names = {
-            f"tinydocs-module-0.2.4-{host}.{'zip' if host.startswith('windows-') else 'tar.gz'}"
-            for host in hosts
-        }
-        source_hashes = {
-            "tinydocs-bus-0.2.4.crate": hashlib.sha256(b"bus crate").hexdigest(),
-            "tinybus-source-0123456789ab.tar.gz": hashlib.sha256(b"pinned source").hexdigest(),
-        }
-        old_library_hashes = {name: "b" * 64 for name in module_names}
-        old_archive_hashes = {name: "a" * 64 for name in module_names}
-        for include_library_table in (True, False):
-            with self.subTest(include_library_table=include_library_table), tempfile.TemporaryDirectory() as root:
-                release = Path(root) / "release-assets"
-                release.mkdir()
-                for name, data in (("tinydocs-bus-0.2.4.crate", b"bus crate"),
-                                   ("tinybus-source-0123456789ab.tar.gz", b"pinned source")):
-                    (release / name).write_bytes(data)
-                lines = ["[sha256]"]
-                lines.extend(f'"{name}" = "{digest}"' for name, digest in old_archive_hashes.items())
-                if include_library_table:
-                    lines.extend(["", "[library_sha256]"])
-                    lines.extend(f'"{name}" = "{digest}"' for name, digest in old_library_hashes.items())
-                manifest_path = release / "checksum.toml"
-                manifest_path.write_text("\n".join(lines) + "\n")
-                source_paths = [release / name for name in source_hashes]
-                add_source_checksums(manifest_path, source_paths, "0.2.4")
-                manifest_text = manifest_path.read_text()
-                checksums = parse_checksum_tables(manifest_text)
-                self.assertEqual(manifest_text.count("[sha256]"), 1)
-                self.assertEqual(manifest_text.count("[library_sha256]"), int(include_library_table))
-                self.assertEqual(set(checksums["sha256"]), module_names | set(source_hashes))
-                for name, digest in source_hashes.items():
-                    self.assertEqual(checksums["sha256"][name], digest)
-                if include_library_table:
-                    self.assertEqual(checksums["library_sha256"], old_library_hashes)
-                    self.assertTrue(module_names.isdisjoint(source_hashes.keys()))
-                    self.assertEqual(set(checksums["library_sha256"]), module_names)
-                else:
-                    self.assertNotIn("library_sha256", checksums)
+        for version in ("0.2.4", "0.2.5-rc.1+build.5"):
+            module_names = {
+                f"tinydocs-module-{version}-{host}.{'zip' if host.startswith('windows-') else 'tar.gz'}"
+                for host in hosts
+            }
+            source_files = {
+                f"tinydocs-bus-{version}.crate": b"bus crate",
+                "tinybus-source-0123456789ab.tar.gz": b"pinned source",
+            }
+            source_hashes = {name: hashlib.sha256(content).hexdigest() for name, content in source_files.items()}
+            old_library_hashes = {name: "b" * 64 for name in module_names}
+            old_archive_hashes = {name: "a" * 64 for name in module_names}
+            for include_library_table in (True, False):
+                with self.subTest(version=version, include_library_table=include_library_table), tempfile.TemporaryDirectory() as root:
+                    release = Path(root) / "release-assets"
+                    release.mkdir()
+                    for name, data in source_files.items():
+                        (release / name).write_bytes(data)
+                    lines = ["[sha256]"]
+                    lines.extend(f'"{name}" = "{digest}"' for name, digest in old_archive_hashes.items())
+                    if include_library_table:
+                        lines.extend(["", "[library_sha256]"])
+                        lines.extend(f'"{name}" = "{digest}"' for name, digest in old_library_hashes.items())
+                    manifest_path = release / "checksum.toml"
+                    manifest_path.write_text("\n".join(lines) + "\n")
+                    source_paths = [release / name for name in source_hashes]
+                    add_source_checksums(manifest_path, source_paths, version)
+                    manifest_text = manifest_path.read_text()
+                    checksums = parse_checksum_tables(manifest_text)
+                    self.assertEqual(manifest_text.count("[sha256]"), 1)
+                    self.assertEqual(manifest_text.count("[library_sha256]"), int(include_library_table))
+                    self.assertEqual(set(checksums["sha256"]), module_names | set(source_hashes))
+                    for name, digest in source_hashes.items():
+                        self.assertEqual(checksums["sha256"][name], digest)
+                    if include_library_table:
+                        self.assertEqual(checksums["library_sha256"], old_library_hashes)
+                        self.assertTrue(module_names.isdisjoint(source_hashes.keys()))
+                        self.assertEqual(set(checksums["library_sha256"]), module_names)
+                    else:
+                        self.assertNotIn("library_sha256", checksums)
 
     def test_tinydocs_source_job_packages_only_after_verified_source_checkout(self):
         job = self.workflow["jobs"]["source_assets"]
