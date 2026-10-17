@@ -319,8 +319,10 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
 
         for field, value in (
             ("path", ".github/workflows/attacker.yml@refs/heads/epic/8056-modules-wiring"),
+            ("workflow_id", self.verify.CI_WORKFLOW_ID + 1),
             ("event", "workflow_dispatch"),
             ("head_sha", sha(99)),
+            ("head_branch", "unrelated-branch"),
         ):
             fake = reviewed_release_fixture(self.verify)
             fake.workflow_runs[fake.heads[72]][0][field] = value
@@ -432,6 +434,21 @@ class ReviewedReleaseApiPaginationTests(unittest.TestCase):
         self.api._request = lambda *_args, **_kwargs: {"unexpected": []}
         with self.assertRaisesRegex(self.verify.VerificationError, "invalid page"):
             self.api.rest_pages("pulls/1/reviews")
+
+    def test_workflow_runs_and_jobs_are_fetched_from_the_exact_head_and_attempt(self):
+        requested = []
+
+        def request(path, **kwargs):
+            requested.append(path)
+            if "/actions/runs?" in path:
+                return {"workflow_runs": [{"id": 91}]}
+            return {"jobs": [{"id": 92}]}
+
+        self.api._request = request
+        self.assertEqual(self.api.workflow_runs_for_commit(sha(7)), [{"id": 91}])
+        self.assertEqual(self.api.jobs_for_workflow_run(91, 3), [{"id": 92}])
+        self.assertIn(f"head_sha={sha(7)}", requested[0])
+        self.assertIn("/actions/runs/91/attempts/3/jobs", requested[1])
 
     def test_graphql_cursor_pagination_reads_every_review_thread_page(self):
         cursors = []
@@ -642,7 +659,7 @@ def reviewed_release_fixture(verifier):
         run_id = 1000 + number
         api.workflow_runs[heads[number]] = [{
             "id": run_id,
-            "workflow_id": 51,
+            "workflow_id": verifier.CI_WORKFLOW_ID,
             "path": ".github/workflows/ci.yml@refs/pull/75/merge",
             "event": "pull_request",
             "status": "completed",

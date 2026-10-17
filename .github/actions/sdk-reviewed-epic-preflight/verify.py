@@ -18,6 +18,8 @@ CANONICAL_REPO = "tinyhumansai/tinybus"
 EPIC_BASE = "epic/8056-modules-wiring"
 SDK_PACKAGE = "tinybus"
 CHECK_APP_ID = 15368
+CI_WORKFLOW_ID = 330089283
+CI_WORKFLOW_PATH = ".github/workflows/ci.yml"
 MAX_EPIC_MERGES = 64
 MAX_REST_PAGES = 100
 MAX_GRAPHQL_PAGES = 100
@@ -354,6 +356,7 @@ def _validate_pull(pull: dict, repository: str, merge_sha: str) -> dict:
     return {
         "number": number,
         "head_sha": _sha(head.get("sha"), "pull request head"),
+        "head_ref": head.get("ref"),
         "head_repository": (head.get("repo") or {}).get("full_name"),
         "author": author.get("login"),
     }
@@ -389,9 +392,11 @@ def _verify_required_checks(api, pull: dict) -> None:
         run for run in workflow_runs
         if isinstance(run, dict)
         and isinstance(run.get("path"), str)
-        and run["path"].split("@", 1)[0] == ".github/workflows/ci.yml"
+        and run["path"].split("@", 1)[0] == CI_WORKFLOW_PATH
+        and run.get("workflow_id") == CI_WORKFLOW_ID
         and run.get("event") == "pull_request"
         and run.get("head_sha") == pull["head_sha"]
+        and run.get("head_branch") == pull["head_ref"]
         and (run.get("repository") or {}).get("full_name") == CANONICAL_REPO
         and (run.get("head_repository") or {}).get("full_name") == pull["head_repository"]
         and isinstance(run.get("id"), int)
