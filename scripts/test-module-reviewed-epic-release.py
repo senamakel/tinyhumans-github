@@ -858,6 +858,7 @@ output = Path(args[args.index("--output") + 1])
 Path({str(capture)!r}).write_text("\\n".join(args))
 import tarfile
 import zipfile
+# Model the target TinyBus checksum CLI: module archives must contain one native library.
 for path in paths:
     asset = Path(path)
     if asset.name.endswith(".tar.gz"):
