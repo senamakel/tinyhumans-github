@@ -645,7 +645,7 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
             {"token", "tag", "version", "reviewed-pr"},
         )
         self.assertNotIn("package", verifier_step["with"])
-        source_jobs = ("validate", "native", "distro", "assemble")
+        source_jobs = ("validate", "native", "distro", "source_assets", "assemble")
         for name in source_jobs:
             with self.subTest(job=name):
                 needs = jobs[name]["needs"]
@@ -705,6 +705,7 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("expected=17", workflow)
         self.assertIn("module-source-bundle", workflow)
         self.assertIn("needs.source_assets.result == 'success'", workflow)
+        self.assertIn("release-assets/${MODULE_ASSET}-${MODULE_VERSION}-*.tar.gz", workflow)
 
     def test_tinydocs_sources_are_built_after_admission_and_merged_into_release_assets(self):
         jobs = self.workflow["jobs"]
@@ -726,10 +727,67 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
 
         assemble = jobs["assemble"]
         self.assertIn("source_assets", assemble["needs"])
-        self.assertIn("module-assets", str(assemble))
+        self.assertIn("module-*", str(assemble))
         self.assertIn("tinydocs-source-assets", str(assemble))
-        self.assertIn("merge-reviewed-source-assets.py", str(assemble))
+        self.assertIn("Merge the exact reviewed TinyDocs source bundle", str(assemble))
         self.assertIn("checksum", str(assemble))
+        steps = assemble["steps"]
+        checksum_index = next(i for i, step in enumerate(steps) if "checksum" in step.get("name", "").lower())
+        source_download_index = next(i for i, step in enumerate(steps) if step.get("with", {}).get("name") == "tinydocs-source-assets")
+        source_merge_index = next(i for i, step in enumerate(steps) if step.get("name") == "Merge the exact reviewed TinyDocs source bundle")
+        upload_index = next(i for i, step in enumerate(steps) if step.get("uses", "").startswith("actions/upload-artifact@"))
+        self.assertLess(checksum_index, source_download_index)
+        self.assertLess(source_download_index, source_merge_index)
+        self.assertLess(source_merge_index, upload_index)
+        self.assertEqual(steps[upload_index]["with"]["path"], "release-assets/*")
+
+    def test_reviewed_tinydocs_asset_merge_rejects_untrusted_or_incomplete_bundles(self):
+        assemble = self.workflow["jobs"]["assemble"]
+        step = next(step for step in assemble["steps"] if step.get("name") == "Merge the exact reviewed TinyDocs source bundle")
+        match = re.search(r"(?s)python3 - .*? <<'PYTHON'\n(.*?)\nPYTHON\s*$", step["run"])
+        self.assertIsNotNone(match, "TinyDocs source merger must remain inline in the trusted shared workflow")
+        namespace = {"__name__": "reviewed_source_merge_test"}
+        exec(compile(match.group(1), "reviewed-source-merge", "exec"), namespace)
+        merge = namespace["merge"]
+        with tempfile.TemporaryDirectory() as root:
+            source, destination = Path(root) / "source", Path(root) / "release"
+            source.mkdir(); destination.mkdir()
+            crate = source / "tinydocs-bus-0.2.4.crate"
+            bus = source / "tinybus-source-0123456789ab.tar.gz"
+            crate.write_bytes(b"crate")
+            bus.write_bytes(b"bus source")
+            merge("tinydocs", "0.2.4", source, destination)
+            self.assertEqual(
+                sorted(path.name for path in destination.iterdir()),
+                ["tinydocs-bus-0.2.4.crate", "tinybus-source-0123456789ab.tar.gz"],
+            )
+            self.assertEqual((destination / crate.name).read_bytes(), b"crate")
+            self.assertEqual((destination / bus.name).read_bytes(), b"bus source")
+
+        with tempfile.TemporaryDirectory() as root:
+            source, destination = Path(root) / "source", Path(root) / "release"
+            source.mkdir(); destination.mkdir()
+            (source / "tinydocs-bus-0.2.4.crate").write_bytes(b"crate")
+            (source / "tinybus-source-0123456789ab.tar.gz").write_bytes(b"bus source")
+            with self.assertRaisesRegex(ValueError, "unsupported reviewed source bundle"):
+                merge("caller-selected", "0.2.4", source, destination)
+            (source / "caller-extra.zip").write_bytes(b"extra")
+            with self.assertRaisesRegex(ValueError, "exact source asset set"):
+                merge("tinydocs", "0.2.4", source, destination)
+            self.assertEqual(list(destination.iterdir()), [])
+
+    def test_tinydocs_source_job_packages_only_after_verified_source_checkout(self):
+        job = self.workflow["jobs"]["source_assets"]
+        script = str(job)
+        self.assertIn("cargo package --locked --package tinydocs-bus", script)
+        self.assertNotIn("--no-verify", script)
+        self.assertIn("git -C vendor/tinybus archive", script)
+        self.assertIn("git -C vendor/tinybus rev-parse --short=12 HEAD", script)
+        self.assertIn("tinydocs-bus-${MODULE_VERSION}.crate", script)
+        self.assertEqual(
+            next(step for step in job["steps"] if step.get("uses", "").startswith("actions/upload-artifact@"))["with"]["name"],
+            "tinydocs-source-assets",
+        )
 
     def test_tinyvoice_profile_uses_exact_nested_manifest_and_all_native_dependencies(self):
         workflow = (ROOT / ".github/workflows/module-reviewed-epic-release.yml").read_text()
@@ -740,7 +798,7 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         self.assertIn("MODULE_APT_PACKAGES", str(native))
         self.assertIn("libasound2-dev libx11-dev libxtst-dev libxi-dev", str(native))
         self.assertIn("scripts/test-distro.sh", str(distro))
-        self.assertIn("install-distro-packages.sh", str(workflow))
+        self.assertIn("MODULE_APT_PACKAGES", str(native))
 
 
 if __name__ == "__main__":
