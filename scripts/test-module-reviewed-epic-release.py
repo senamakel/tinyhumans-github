@@ -346,6 +346,9 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 check=False, capture_output=True, text=True,
             )
             self.assertNotEqual(upstream_ref.returncode, 0)
+            (checkout / "scripts/test-module-reviewed-epic-release.py").write_bytes(
+                (ROOT / "scripts/test-module-reviewed-epic-release.py").read_bytes()
+            )
             child_environment = os.environ.copy()
             child_environment["MODULE_REVIEWED_CLEAN_CHECKOUT_CHILD"] = "1"
             result = subprocess.run(
