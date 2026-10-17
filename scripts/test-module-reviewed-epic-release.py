@@ -11,7 +11,6 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-import tomllib
 import tarfile
 import tempfile
 import unittest
@@ -43,6 +42,30 @@ FIXTURE_PATH = Path(__file__).with_name("module-reviewed-release-fixtures.py")
 FIXTURE_SPEC = importlib.util.spec_from_file_location("module_reviewed_fixtures", FIXTURE_PATH)
 FIXTURES = importlib.util.module_from_spec(FIXTURE_SPEC)
 FIXTURE_SPEC.loader.exec_module(FIXTURES)
+
+
+def parse_checksum_tables(source):
+    """Parse the checksum manifest's two simple digest tables and reject duplicates."""
+    tables = {}
+    current = None
+    for line_number, line in enumerate(source.splitlines(), 1):
+        if not line.strip():
+            continue
+        section = re.fullmatch(r"\[([a-z_]+)\]", line.strip())
+        if section:
+            current = section.group(1)
+            if current in tables:
+                raise AssertionError(f"duplicate checksum table at line {line_number}")
+            tables[current] = {}
+            continue
+        entry = re.fullmatch(r'"([^"\\]+)"\s*=\s*"([0-9a-f]{64})"', line.strip())
+        if entry is None or current is None:
+            raise AssertionError(f"invalid checksum manifest line {line_number}: {line}")
+        name, digest = entry.groups()
+        if name in tables[current]:
+            raise AssertionError(f"duplicate checksum key {name}")
+        tables[current][name] = digest
+    return tables
 
 
 class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
@@ -843,7 +866,7 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
                 text=True, capture_output=True,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
-            checksums = tomllib.loads(manifest_path.read_text())
+            checksums = parse_checksum_tables(manifest_path.read_text())
             self.assertEqual(set(checksums["sha256"]), module_names | set(source_hashes))
             self.assertEqual(set(checksums["library_sha256"]), module_names)
             for name, digest in source_hashes.items():
