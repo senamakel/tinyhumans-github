@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from types import SimpleNamespace
 
 
 _fixture_path = Path(__file__).with_name("sdk-reviewed-release-fixtures.py")
@@ -14,7 +15,9 @@ _fixture_spec.loader.exec_module(_fixture_module)
 
 def module_release_fixture(verifier, repository: str, package: str):
     """Return the shared four-merge fixture with canonical module identities."""
-    fake = _fixture_module.reviewed_release_fixture(verifier)
+    fixture_verifier = SimpleNamespace(**vars(verifier))
+    fixture_verifier.CI_WORKFLOW_ID = verifier.CI_WORKFLOW_IDS[repository]
+    fake = _fixture_module.reviewed_release_fixture(fixture_verifier)
     api = fake.api
     api.repository = repository
     short_name = repository.split("/", 1)[1]
