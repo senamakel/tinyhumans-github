@@ -889,8 +889,6 @@ output.write_text("\\n".join(lines) + "\\n")
             self.assertEqual(args.count("--path"), 17)
             self.assertNotIn("release-assets/tinydocs-bus-0.2.4.crate", args)
             self.assertNotIn("release-assets/tinybus-source-0123456789ab.tar.gz", args)
-            self.assertIn("release-assets/tinydocs-bus-0.2.4.crate", args)
-            self.assertIn("release-assets/tinybus-source-0123456789ab.tar.gz", args)
             manifest = (release / "checksum.toml").read_text()
             self.assertIn(
                 f'"tinydocs-bus-0.2.4.crate" = "{hashlib.sha256(b"bus crate").hexdigest()}"',
