@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import os
 from pathlib import Path
 import subprocess
@@ -110,7 +111,16 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         )
         profile = VERIFY.MODULE_PROFILES["tinyhumansai/tinyjuice"]
         self.assertEqual(profile["package"], fixture["crate"])
-        self.assertEqual(profile["asset"], fixture["native_archive"].split("-")[0])
+        self.assertEqual(profile["asset"], fixture["crate"])
+
+        shell_archive = fixture["shell_archive_template"]
+        for key in ("crate", "version", "host"):
+            shell_archive = shell_archive.replace("${" + key + "}", fixture[key])
+        powershell_archive = fixture["powershell_archive_template"]
+        for key, fixture_key in (("${Crate}", "crate"), ("$Version", "version"), ("$HostKey", "windows_host")):
+            powershell_archive = powershell_archive.replace(key, fixture[fixture_key])
+        self.assertEqual(shell_archive, fixture["native_archive"])
+        self.assertEqual(powershell_archive, fixture["windows_archive"])
 
         native_archive = fixture["native_archive"]
         expected_archive = (

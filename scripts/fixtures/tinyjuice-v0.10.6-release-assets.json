@@ -1,0 +1,11 @@
+{
+  "source_sha": "1414184efa3d1f2b7d08ef5c89fa227d7a721f2d",
+  "crate": "tinyjuice-module",
+  "version": "0.10.6",
+  "host": "ubuntu-22.04-x86_64",
+  "native_archive": "tinyjuice-module-0.10.6-ubuntu-22.04-x86_64.tar.gz",
+  "windows_host": "windows-2022-x86_64",
+  "windows_archive": "tinyjuice-module-0.10.6-windows-2022-x86_64.zip",
+  "shell_archive_template": "${crate}-${version}-${host}.tar.gz",
+  "powershell_archive_template": "${Crate}-$Version-$HostKey.zip"
+}
