@@ -15,7 +15,8 @@ command:
 | Node.js, pnpm | 24.22.0, 10.10.0 |
 | tauri-driver | 2.0.5 |
 | MongoDB server, mongosh | 7.0.45, latest 2.x |
-| mold, clang, cmake, libssl-dev, pkg-config, jq, git | Ubuntu's |
+| mold | 2.40.4 (default Rust linker) |
+| clang, cmake, libssl-dev, pkg-config, jq, git | Ubuntu's |
 | GTK 3, WebKitGTK 4.1, AppIndicator, librsvg, ALSA, X11/XTest, libxdo, libevdev development libraries | Ubuntu's |
 | Xvfb, xauth, AT-SPI, D-Bus, WebKitWebDriver, patchelf, Python/tomli | Ubuntu's |
 
@@ -42,11 +43,16 @@ name, but `docker run` is not available. Start MongoDB in the job instead
 (`mongod --fork --dbpath ... --logpath ...`). The same goes for the EX63
 microVMs, which have no Docker either.
 
-mold, tinymold and cargo-nextest are installed on `PATH`. Jobs can select
-mold with `RUSTFLAGS="-C link-arg=-fuse-ld=mold"`, enable the build cache
-with `RUSTC_WRAPPER=tinymold`, and run tests with `cargo nextest run`.
-sccache is also on `PATH`; select either `RUSTC_WRAPPER=sccache` or
-`RUSTC_WRAPPER=tinymold` for a job.
+Rust builds use mold by default through
+`CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=/usr/local/bin/rust-mold-linker`.
+The wrapper selects the pinned mold binary with clang, overriding rustc's
+bundled-lld hint. It remains effective when coverage sets `RUSTFLAGS` or an
+EX63 guest relocates `CARGO_HOME`.
+
+This linker does not enable a compiler cache. Tinymold and sccache are
+available on `PATH`; normal CI may choose either with `RUSTC_WRAPPER`.
+Release jobs can use the default mold linker while leaving `RUSTC_WRAPPER`
+and `RUSTC_WORKSPACE_WRAPPER` empty. Tests may use `cargo nextest run`.
 
 ## OpenHuman CI
 
@@ -66,7 +72,9 @@ choose when to start them. Repository JS dependencies and browser downloads
 remain part of the consuming workflow's setup. Existing workflows need to
 select this image's published SHA tag to use it.
 
-Every image build runs `smoke.sh`: tool checks, a C compile/link against the
+Every image build runs `smoke.sh`: tool checks; real Rust ELF linker checks
+for stable, MSRV and OpenHuman toolchains, with and without coverage flags
+and with a relocated `CARGO_HOME`; a C compile/link against the
 native development libraries using mold, and GTK initialization under Xvfb
 and D-Bus. This verifies the image dependencies, not the full OpenHuman suite.
 
