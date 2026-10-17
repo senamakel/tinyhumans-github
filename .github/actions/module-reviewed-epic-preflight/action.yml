@@ -53,4 +53,4 @@ runs:
         REVIEWED_PR: ${{ inputs.reviewed-pr }}
         MODE: ${{ inputs.mode }}
         EXPECTED_SHA: ${{ inputs.expected-sha }}
-      run: python3 "$GITHUB_ACTION_PATH/verify.py"
+        run: python3 "$GITHUB_ACTION_PATH/verify.py"
