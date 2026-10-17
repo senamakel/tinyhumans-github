@@ -51,7 +51,7 @@ def parse_checksum_tables(source):
     for line_number, line in enumerate(source.splitlines(), 1):
         if not line.strip():
             continue
-        section = re.fullmatch(r"\[([a-z_]+)\]", line.strip())
+        section = re.fullmatch(r"\[([a-z0-9_]+)\]", line.strip())
         if section:
             current = section.group(1)
             if current in tables:
