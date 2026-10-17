@@ -873,7 +873,7 @@ output.write_text("\\n".join(lines) + "\\n")
             result = subprocess.run(["bash", "-c", step["run"]], cwd=root, env=environment,
                                     text=True, capture_output=True)
             self.assertEqual(result.returncode, 1)
-            self.assertIn("expected 17 module archives, found 16", result.stderr)
+            self.assertIn("expected 17 module archives in checksum input, found 16", result.stderr)
 
     def test_tinyvoice_profile_uses_exact_nested_manifest_and_all_native_dependencies(self):
         validate = self.workflow["jobs"]["validate"]
