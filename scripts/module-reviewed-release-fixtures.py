@@ -55,7 +55,7 @@ def module_release_fixture(verifier, repository: str, package: str):
 
     for job_id, payload in api.logs.items():
         api.logs[job_id] = payload.replace(
-            b"4adc1080fb495098e7af1aade82ed7e6e3c69bb7", workflow_pin.encode(),
+            "4adc1080fb495098e7af1aade82ed7e6e3c69bb7", workflow_pin,
         )
 
     for jobs in api.workflow_jobs.values():
