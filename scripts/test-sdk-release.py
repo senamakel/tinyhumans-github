@@ -113,6 +113,19 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
             jobs["publish"]["permissions"],
             {"contents": "write", "pull-requests": "read", "checks": "read"},
         )
+        preflight_steps = jobs["preflight"]["steps"]
+        self.assertTrue(all("actions/checkout" not in step.get("uses", "") for step in preflight_steps))
+        package_checkout = next(
+            step for step in jobs["package"]["steps"]
+            if step.get("uses", "").startswith("actions/checkout@")
+        )
+        self.assertEqual(package_checkout["with"]["ref"], "${{ needs.preflight.outputs.source-sha }}")
+        tag_recheck = next(
+            step for step in jobs["publish"]["steps"]
+            if step.get("name") == "Recheck the release tag against the verified source SHA"
+        )
+        self.assertEqual(tag_recheck["with"]["mode"], "tag-only")
+        self.assertEqual(tag_recheck["with"]["expected-sha"], "${{ needs.preflight.outputs.source-sha }}")
         action_uses = [
             step.get("uses", "")
             for job in jobs.values()
@@ -137,10 +150,26 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
             step for step in self.workflow["jobs"]["package"]["steps"]
             if step.get("name") == "Validate and package reviewed SDK source"
         )
-        self.assertEqual(
-            reviewed_package["run"].replace("          [[ \"$SOURCE_SHA\" == \"$actual_sha\" ]]\n", ""),
-            legacy_package["run"].replace("          git fetch origin main\n          git merge-base --is-ancestor HEAD origin/main\n", ""),
+        reviewed_run = reviewed_package["run"].replace(
+            '          actual_sha="$(git rev-parse HEAD)"\n'
+            '          [[ "$actual_sha" == "$SOURCE_SHA" ]]\n',
+            "",
         )
+        legacy_run = legacy_package["run"].replace(
+            "          git fetch origin main\n"
+            "          git merge-base --is-ancestor HEAD origin/main\n",
+            "",
+        )
+        self.assertEqual(reviewed_run, legacy_run)
+        legacy_upload = next(
+            step for step in self.legacy["jobs"]["package"]["steps"]
+            if step.get("uses", "").startswith("actions/upload-artifact@")
+        )
+        reviewed_upload = next(
+            step for step in self.workflow["jobs"]["package"]["steps"]
+            if step.get("uses", "").startswith("actions/upload-artifact@")
+        )
+        self.assertEqual(reviewed_upload, legacy_upload)
         legacy_publish = next(
             step for step in self.legacy["jobs"]["publish"]["steps"]
             if step.get("name") == "Verify and publish immutable SDK release"

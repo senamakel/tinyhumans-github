@@ -1,0 +1,146 @@
+name: TinyBus reviewed-epic SDK source release
+# Temporary release path for the reviewed OpenHuman epic. Ordinary SDK callers
+# continue to use sdk-release.yml, whose reviewed-main admission is unchanged.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+      version:
+        type: string
+        required: true
+      package:
+        type: string
+        required: true
+      reviewed-pr:
+        description: Exact merged TinyBus PR whose merge commit is tagged.
+        type: number
+        required: true
+permissions:
+  contents: read
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      source-sha: ${{ steps.verify.outputs.source-sha }}
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    steps:
+      - id: verify
+        uses: tinyhumansai/.github/.github/actions/sdk-reviewed-epic-preflight@894bab1612f2f94b225032a8671fc5acf95c59b7
+        with:
+          token: ${{ github.token }}
+          tag: ${{ inputs.tag }}
+          version: ${{ inputs.version }}
+          package: ${{ inputs.package }}
+          reviewed-pr: ${{ inputs.reviewed-pr }}
+
+  package:
+    runs-on: ubuntu-latest
+    needs: preflight
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.preflight.outputs.source-sha }}
+          fetch-depth: 0
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249
+      - name: Validate and package reviewed SDK source
+        env:
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+          SOURCE_SHA: ${{ needs.preflight.outputs.source-sha }}
+        run: |
+          set -euo pipefail
+          [[ "$PACKAGE" =~ ^[A-Za-z0-9_-]+$ ]]
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
+          actual_sha="$(git rev-parse HEAD)"
+          [[ "$actual_sha" == "$SOURCE_SHA" ]]
+          actual="$(cargo metadata --no-deps --format-version 1 | jq -er --arg name "$PACKAGE" '.packages[] | select(.name == $name) | .version')"
+          [[ "$actual" == "$VERSION" ]]
+          cargo test --locked --workspace --all-features
+          mkdir -p release-assets
+          archive="$PACKAGE-$VERSION-source.tar.gz"
+          git archive --format=tar.gz --prefix="$PACKAGE-$VERSION/" HEAD > "release-assets/$archive"
+          hash="$(sha256sum "release-assets/$archive" | cut -d ' ' -f 1)"
+          printf '"%s" = "%s"\n' "$archive" "$hash" > release-assets/checksum.toml
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+        with:
+          name: sdk-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    runs-on: ubuntu-latest
+    needs: [preflight, package]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: sdk-release-assets
+          path: release-assets
+      - name: Recheck the release tag against the verified source SHA
+        uses: tinyhumansai/.github/.github/actions/sdk-reviewed-epic-preflight@894bab1612f2f94b225032a8671fc5acf95c59b7
+        with:
+          token: ${{ github.token }}
+          tag: ${{ inputs.tag }}
+          mode: tag-only
+          expected-sha: ${{ needs.preflight.outputs.source-sha }}
+      - name: Verify and publish immutable SDK release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          PACKAGE: ${{ inputs.package }}
+          VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$PACKAGE" =~ ^[A-Za-z0-9_-]+$ ]]
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
+          archive="$PACKAGE-$VERSION-source.tar.gz"
+          expected_files=$'checksum.toml\n'"$archive"
+          actual_files="$(find release-assets -mindepth 1 -maxdepth 1 -type f -printf '%f\n' | sort)"
+          if [[ "$(find release-assets -mindepth 1 -maxdepth 1 ! -type f -print -quit)" != "" || "$actual_files" != "$(printf '%s\n' "$expected_files" | sort)" ]]; then
+            echo "downloaded SDK artifact has an unexpected file set" >&2
+            exit 1
+          fi
+          digest="$(sha256sum "release-assets/$archive" | awk '{print $1}')"
+          [[ "$(cat release-assets/checksum.toml)" == "\"$archive\" = \"$digest\"" ]]
+          release_type=()
+          if [[ "${VERSION%%+*}" == *-* ]]; then release_type+=(--prerelease); fi
+          if gh release view "$TAG" --json assets >/dev/null 2>&1; then
+            release="$(gh release view "$TAG" --json assets,isDraft,isPrerelease)"
+            is_draft="$(jq -r '.isDraft' <<<"$release")"
+            is_prerelease="$(jq -r '.isPrerelease' <<<"$release")"
+            existing="$(jq -r '.assets[].name' <<<"$release" | sort)"
+            expected="$(printf '%s\n' checksum.toml "$archive" | sort)"
+            [[ "$existing" == "$expected" ]] || { echo "release $TAG has a different asset set" >&2; exit 1; }
+            existing_assets="$(mktemp -d "${RUNNER_TEMP:-/tmp}/sdk-release-assets.XXXXXX")"
+            gh release download "$TAG" --dir "$existing_assets" --clobber
+            for name in checksum.toml "$archive"; do
+              expected_digest="$(sha256sum "release-assets/$name" | awk '{print $1}')"
+              actual_digest="$(sha256sum "$existing_assets/$name" | awk '{print $1}')"
+              [[ "$expected_digest" == "$actual_digest" ]] || { echo "release $TAG asset $name has different contents" >&2; exit 1; }
+            done
+            rm -rf "$existing_assets"
+            expected_prerelease=false
+            if [[ ${#release_type[@]} -gt 0 ]]; then expected_prerelease=true; fi
+            [[ "$is_prerelease" == "$expected_prerelease" ]] || { echo "release $TAG has the wrong prerelease state" >&2; exit 1; }
+            if [[ "$is_draft" == true ]]; then
+              gh release edit "$TAG" --draft=false "${release_type[@]}"
+              echo "published verified draft release $TAG"
+            else
+              echo "release $TAG already exists with verified asset contents; skipping retry"
+            fi
+          else
+            flags=(--verify-tag --title "$TAG")
+            if [[ ${#release_type[@]} -gt 0 ]]; then flags+=(--prerelease); fi
+            gh release create "$TAG" release-assets/* "${flags[@]}"
+          fi
