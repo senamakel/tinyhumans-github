@@ -41,9 +41,9 @@ def verify_ci_merge_provenance(api, workflow_run: dict, job: dict, pull: dict,
     if synthetic_commit["tree_sha"] != reviewed_commit["tree_sha"]:
         raise ValueError("historical CI checkout tree did not match the reviewed merge tree")
     if association is not None:
-    _verify_event_association(
-        association, pull, reviewed_commit["parents"], repository, epic_base
-    )
+        _verify_event_association(
+            association, pull, reviewed_commit["parents"], repository, epic_base
+        )
 
 
 def _verify_event_association(association: dict, pull: dict,
