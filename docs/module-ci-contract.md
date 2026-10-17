@@ -113,7 +113,7 @@ final rollup; after the epic is merged to main, release from the main-based
 entrypoint.
 
 For the same migration only, `tinyconnectors`, `tinybox`, `tinyjuice`,
-`tinywallet`, `tinymcp`, and `tinychannels` may
+`tinywallet`, `tinymcp`, `tinychannels`, `tinydocs`, and `tinyvoice` may
 temporarily call `module-reviewed-epic-release.yml` with a positive
 `reviewed-pr`. Its verifier has a compiled-in canonical repository/package/
 workflow-ID map and checks the complete reviewed epic path and the same 13
@@ -129,14 +129,16 @@ use the unchanged `module-release.yml` entrypoint.
 
 The verifier's profiles are literal and closed:
 
-| Canonical repository | Cargo package | Asset stem | CI workflow ID | `module-ci.yml` pin | Manifest | Extra package files |
-| --- | --- | --- | ---: | --- | --- | --- |
-| `tinyhumansai/tinyconnectors` | `tinyconnectors` | `tinyconnectors` | `345777017` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none |
-| `tinyhumansai/tinybox` | `tinybox-module` | `tinybox` | `334144667` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none |
-| `tinyhumansai/tinyjuice` | `tinyjuice-module` | `tinyjuice` | `307270985` | `3e87ade76b622844985d0c665a3b075313e4545c` | `Cargo.toml` | `docs/specs/tinybus-module.md` |
-| `tinyhumansai/tinywallet` | `tinywallet-module` | `tinywallet-module` | `331024528` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none |
-| `tinyhumansai/tinymcp` | `tinymcp` | `tinymcp` | `339480400` | `62c8ae0468f3882b75947d5cba9687e609ce1fed` | `Cargo.toml` | none |
-| `tinyhumansai/tinychannels` | `tinychannels-module` | `tinychannels-module` | `307289287` | `3e87ade76b622844985d0c665a3b075313e4545c` | `Cargo.toml` | none |
+| Canonical repository | Cargo package | Asset stem | CI workflow ID | `module-ci.yml` pin | Manifest | Extra package files | Ubuntu apt packages | Source bundle |
+| --- | --- | --- | ---: | --- | --- | --- | --- | --- |
+| `tinyhumansai/tinyconnectors` | `tinyconnectors` | `tinyconnectors` | `345777017` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none | none | none |
+| `tinyhumansai/tinybox` | `tinybox-module` | `tinybox` | `334144667` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none | none | none |
+| `tinyhumansai/tinyjuice` | `tinyjuice-module` | `tinyjuice` | `307270985` | `3e87ade76b622844985d0c665a3b075313e4545c` | `Cargo.toml` | `docs/specs/tinybus-module.md` | none | none |
+| `tinyhumansai/tinywallet` | `tinywallet-module` | `tinywallet-module` | `331024528` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none | none | none |
+| `tinyhumansai/tinymcp` | `tinymcp` | `tinymcp` | `339480400` | `62c8ae0468f3882b75947d5cba9687e609ce1fed` | `Cargo.toml` | none | none | none |
+| `tinyhumansai/tinychannels` | `tinychannels-module` | `tinychannels-module` | `307289287` | `3e87ade76b622844985d0c665a3b075313e4545c` | `Cargo.toml` | none | none | none |
+| `tinyhumansai/tinydocs` | `tinydocs-module` | `tinydocs-module` | `331024957` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | `docs/specs/tinybus-module.md` | none | `tinydocs` |
+| `tinyhumansai/tinyvoice` | `tinyvoice-module` | `tinyvoice-module` | `333928426` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `crates/tinyvoice-module/Cargo.toml` | none | `libasound2-dev libx11-dev libxtst-dev libxi-dev` | none |
 
 The TinyJuice profile keeps the pin used by its reviewed release workflow. At
 that revision the check names and fmt checkout match the newer module CI
@@ -162,6 +164,22 @@ trusted reusable workflow pin
 `3e87ade76b622844985d0c665a3b075313e4545c`. It packages only the
 `tinychannels-module` cdylib from the root `Cargo.toml`, with no additional
 files.
+
+The TinyDocs source bundle is generated only in the reviewed workflow after
+preflight admits the exact source SHA. It contains the `tinydocs-bus` Cargo
+package and a source archive of that SHA's pinned `vendor/tinybus` gitlink.
+Assembly accepts exactly these two top-level files, adds them to the same
+release-assets artifact as the module archives and checksum manifest, and
+compares the complete asset set and contents on release retries. The checksum
+manifest continues to cover the 17 module archives, matching the ordinary
+TinyDocs source-artifact flow.
+
+The TinyVoice profile fixes its metadata manifest at
+`crates/tinyvoice-module/Cargo.toml` and its Ubuntu native dependencies at
+`libasound2-dev libx11-dev libxtst-dev libxi-dev`. Its six Fedora/Arch builds
+run the admitted source's `test-distro.sh`, which installs the corresponding
+audio and X11 development packages through `install-distro-packages.sh`.
+Neither the manifest nor dependency list is a caller input.
 
 Add another repository only through a separately reviewed update to this
 allowlist, including its actual canonical CI workflow identity and package
