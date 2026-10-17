@@ -191,6 +191,7 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
 
     def test_review_state_is_effective_across_heads_and_threads_fail_closed(self):
         fake = reviewed_release_fixture(self.verify)
+        fake.reviews[74] = [review for review in fake.reviews[74] if review["state"] != "APPROVED"]
         fake.reviews[74].append({
             "user": {"login": "tinysweeper[bot]"},
             "state": "COMMENTED",
@@ -272,6 +273,8 @@ def reviewed_release_fixture(verifier):
     class Git:
         def __init__(self, parents):
             self.parents = parents
+            self.tag_sha = sha(4)
+            self.main_sha = sha(1)
 
         def parents_of(self, commit):
             return self.parents[commit]
