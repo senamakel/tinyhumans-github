@@ -65,10 +65,11 @@ after preflight and metadata validation, checks out the admitted SHA, packages
 only `tinydocs-bus`, and archives the checked-out `vendor/tinybus` gitlink.
 Assembly accepts exactly those two flat files, rejects symlinks, extra files,
 and collisions, and adds them to the same uploaded release-assets artifact
-after generating the module checksum manifest. The module checksum count
-matches only the 17 profile-stem/version module archives; the immutable
-release retry comparison covers the complete assembled asset set, including
-both TinyDocs source files.
+before checksum generation. The module archive count remains 17, selected
+only by the profile stem and version. `checksum.toml` records all 17 module
+archives and both TinyDocs source files; the manifest itself is a separate
+release asset. The immutable release retry comparison covers the complete
+assembled asset set, including the two source files and manifest.
 
 TinyVoice uses only its compiled-in nested manifest
 `crates/tinyvoice-module/Cargo.toml` and the Ubuntu native build dependency
