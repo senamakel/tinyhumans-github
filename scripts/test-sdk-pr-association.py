@@ -72,6 +72,7 @@ class WorkflowPullAssociationTests(unittest.TestCase):
     def test_exact_run_pr_association_rejects_event_base_or_head_retargeting(self):
         for section, field, value in (
             ("base", "ref", "main"),
+            ("base", "sha", "f" * 40),
             ("base", "repo", {"full_name": "other/tinybus"}),
             ("head", "sha", "f" * 40),
             ("head", "ref", "other-branch"),
@@ -182,7 +183,12 @@ class WorkflowPullAssociationTests(unittest.TestCase):
         self.assertTrue(any(name.lower() == "authorization" for name, _ in requests[0].header_items()))
         self.assertFalse(any(name.lower() == "authorization" for name, _ in requests[1].header_items()))
 
-        for location in ("http://logs.example.invalid/logs", "https://user@logs.example.invalid/logs"):
+        for location in (
+            "http://logs.example.invalid/logs",
+            "https://user@logs.example.invalid/logs",
+            "https://127.0.0.1/private",
+            "https://logs.example.invalid:444/logs",
+        ):
             with self.subTest(location=location):
                 class InvalidRedirectOpener:
                     def open(self, request, timeout):

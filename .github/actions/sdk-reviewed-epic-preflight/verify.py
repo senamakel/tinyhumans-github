@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import ipaddress
 import os
 import re
 import subprocess
@@ -206,7 +207,26 @@ class GitHubApi:
                     raise VerificationError("canonical fmt job logs could not be downloaded") from redirect
                 location = redirect.headers.get("Location")
                 parsed = urllib.parse.urlsplit(location or "")
-                if parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password:
+                host = (parsed.hostname or "").lower().rstrip(".")
+                try:
+                    port = parsed.port
+                except ValueError:
+                    port = -1
+                try:
+                    address = ipaddress.ip_address(host)
+                except ValueError:
+                    address = None
+                if (
+                    parsed.scheme != "https"
+                    or not host
+                    or parsed.username
+                    or parsed.password
+                    or port not in (None, 443)
+                    or parsed.fragment
+                    or host == "localhost"
+                    or host.endswith((".localhost", ".local"))
+                    or (address is not None and not address.is_global)
+                ):
                     raise VerificationError("canonical fmt job log redirect was invalid") from redirect
                 # The signed archive URL is deliberately requested without GitHub credentials.
                 response = opener.open(urllib.request.Request(location), timeout=30)
