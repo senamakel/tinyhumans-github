@@ -7,19 +7,18 @@ import re
 import zipfile
 
 
-MODULE_CI_PIN = "4adc1080fb495098e7af1aade82ed7e6e3c69bb7"
 CHECKOUT_ACTION_PIN = "11d5960a326750d5838078e36cf38b85af677262"
 MAX_ARCHIVE_BYTES = 8 * 1024 * 1024
 MAX_LOG_BYTES = 16 * 1024 * 1024
 MAX_LOG_FILES = 64
 
 
-def read_ci_checkout_proof(api, workflow_run: dict, job: dict) -> dict:
+def read_ci_checkout_proof(api, workflow_run: dict, job: dict, module_ci_pin: str) -> dict:
     """Identify the PR and synthetic commit selected by the pinned first checkout step."""
-    _verify_reusable_workflow_pin(workflow_run)
+    _verify_reusable_workflow_pin(workflow_run, module_ci_pin)
     payload = api.job_logs(job["id"])
     text = _decode_job_logs(payload)
-    pull_number, synthetic_sha = _checkout_merge_proof(text)
+    pull_number, synthetic_sha = _checkout_merge_proof(text, module_ci_pin)
     synthetic_commit = api.commit_details(synthetic_sha)
     if synthetic_commit["parents"][1] != workflow_run["head_sha"]:
         raise ValueError("historical CI checkout head did not match the workflow run")
@@ -29,9 +28,12 @@ def read_ci_checkout_proof(api, workflow_run: dict, job: dict) -> dict:
 
 def verify_ci_merge_provenance(api, workflow_run: dict, job: dict, pull: dict,
                                association: dict | None, checkout_proof: dict | None = None,
-                               *, repository: str, epic_base: str) -> None:
+                               *, repository: str, epic_base: str,
+                               module_ci_pin: str) -> None:
     """Bind the tested synthetic merge's ordered parents and tree to the released PR merge."""
-    checkout_proof = checkout_proof or read_ci_checkout_proof(api, workflow_run, job)
+    checkout_proof = checkout_proof or read_ci_checkout_proof(
+        api, workflow_run, job, module_ci_pin
+    )
     if checkout_proof["pull_number"] != pull["number"]:
         raise ValueError("historical fmt checkout did not resolve the exact reviewed PR")
     synthetic_commit = checkout_proof["synthetic_commit"]
@@ -75,11 +77,11 @@ def _verify_event_association(association: dict, pull: dict,
         raise ValueError("workflow run pull request base or head binding did not match the reviewed merge")
 
 
-def _verify_reusable_workflow_pin(workflow_run: dict) -> None:
+def _verify_reusable_workflow_pin(workflow_run: dict, module_ci_pin: str) -> None:
     references = workflow_run.get("referenced_workflows")
     if not isinstance(references, list) or not references:
         raise ValueError("historical CI reusable workflow references were missing")
-    expected_path = f"tinyhumansai/.github/.github/workflows/module-ci.yml@{MODULE_CI_PIN}"
+    expected_path = f"tinyhumansai/.github/.github/workflows/module-ci.yml@{module_ci_pin}"
     matching = []
     for reference in references:
         if not isinstance(reference, dict):
@@ -89,7 +91,7 @@ def _verify_reusable_workflow_pin(workflow_run: dict) -> None:
         if not isinstance(path, str) or not re.fullmatch(r"[0-9a-f]{40}", str(sha)):
             raise ValueError("historical CI reusable workflow reference was malformed")
         if path.startswith("tinyhumansai/.github/.github/workflows/module-ci.yml@"):
-            if path != expected_path or sha != MODULE_CI_PIN:
+            if path != expected_path or sha != module_ci_pin:
                 raise ValueError("historical CI reusable workflow pin was not trusted")
             matching.append(reference)
     if len(matching) != 1:
@@ -123,7 +125,7 @@ def _decode_job_logs(payload: bytes) -> str:
     return "\n".join(chunks)
 
 
-def _checkout_merge_proof(text: str) -> tuple[int, str]:
+def _checkout_merge_proof(text: str, module_ci_pin: str) -> tuple[int, str]:
     lines = text.splitlines()
     complete_job = [
         i for i, line in enumerate(lines)
@@ -142,7 +144,7 @@ def _checkout_merge_proof(text: str) -> tuple[int, str]:
         (index for index, line in enumerate(setup_lines) if "##[group] Inputs" in line),
         len(setup_lines),
     )
-    expected_workflow = f"tinyhumansai/.github/.github/workflows/module-ci.yml@{MODULE_CI_PIN}"
+    expected_workflow = f"tinyhumansai/.github/.github/workflows/module-ci.yml@{module_ci_pin}"
     if (
         len(uses_records) != 1
         or uses_records[0][1] != expected_workflow

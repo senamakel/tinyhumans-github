@@ -128,11 +128,17 @@ use the unchanged `module-release.yml` entrypoint.
 
 The verifier's initial profiles are literal and closed:
 
-| Canonical repository | Cargo package | Asset stem | CI workflow ID | Manifest | Extra package files |
-| --- | --- | --- | ---: | --- | --- |
-| `tinyhumansai/tinyconnectors` | `tinyconnectors` | `tinyconnectors` | `345777017` | `Cargo.toml` | none |
-| `tinyhumansai/tinybox` | `tinybox-module` | `tinybox` | `334144667` | `Cargo.toml` | none |
-| `tinyhumansai/tinyjuice` | `tinyjuice-module` | `tinyjuice` | `307270985` | `Cargo.toml` | `docs/specs/tinybus-module.md` |
+| Canonical repository | Cargo package | Asset stem | CI workflow ID | `module-ci.yml` pin | Manifest | Extra package files |
+| --- | --- | --- | ---: | --- | --- | --- |
+| `tinyhumansai/tinyconnectors` | `tinyconnectors` | `tinyconnectors` | `345777017` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none |
+| `tinyhumansai/tinybox` | `tinybox-module` | `tinybox` | `334144667` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none |
+| `tinyhumansai/tinyjuice` | `tinyjuice-module` | `tinyjuice` | `307270985` | `3e87ade76b622844985d0c665a3b075313e4545c` | `Cargo.toml` | `docs/specs/tinybus-module.md` |
+
+The TinyJuice profile keeps the pin used by its reviewed release workflow. At
+that revision the check names and fmt checkout match the newer module CI
+profile; only the MSRV-selection implementation differs. Historical releases
+must prove the exact pin from the canonical Actions run and fmt job log for
+their repository.
 
 Add another repository only through a separately reviewed update to this
 allowlist, including its actual canonical CI workflow identity and package
