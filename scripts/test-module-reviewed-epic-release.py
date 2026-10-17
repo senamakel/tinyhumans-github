@@ -95,7 +95,7 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
             ".github/actions/sdk-reviewed-epic-preflight/historical_ci.py",
         ):
             result = subprocess.run(
-                ["git", "diff", "--quiet", "upstream/main", "--", path],
+                ["git", "diff", "--quiet", "upstream/epic/8056-modules-wiring", "--", path],
                 cwd=ROOT, check=False,
             )
             self.assertEqual(result.returncode, 0, f"existing path changed: {path}")
