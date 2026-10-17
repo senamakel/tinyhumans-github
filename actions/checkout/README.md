@@ -14,6 +14,9 @@ and then adds the submodules itself:
 - **selectively**: a submodule whose path matches `exclude-submodules` is left
   as an empty directory, and nothing beneath it is visited.
 
+Only indexed gitlinks are updated. Stale `.gitmodules` declarations without a
+matching gitlink are ignored, including declarations in nested submodules.
+
 ```yaml
 - uses: tinyhumansai/.github/actions/checkout@<sha>
   with:

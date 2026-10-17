@@ -123,6 +123,8 @@ class CheckoutSubmodulesTests(unittest.TestCase):
         lib = self.origin / "lib"
         git(lib, "config", "--file", ".gitmodules", "submodule.stale.path", "README")
         git(lib, "config", "--file", ".gitmodules", "submodule.stale.url", (self.origin / "gone").as_uri())
+        git(lib, "config", "--file", ".gitmodules", "submodule.missing.path", "vendor/missing")
+        git(lib, "config", "--file", ".gitmodules", "submodule.missing.url", (self.origin / "gone").as_uri())
         git(lib, "add", ".gitmodules")
         git(lib, "commit", "-q", "-m", "stale nested declaration")
         revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=lib, env=ENV,
