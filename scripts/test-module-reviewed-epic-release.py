@@ -91,6 +91,56 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                         package, 75,
                     )
 
+    def test_wrong_epic_base_and_false_merge_association_fail_closed(self):
+        repository = "tinyhumansai/tinyconnectors"
+        package = VERIFY.MODULE_PACKAGES[repository]
+        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+        fake.api.pulls[75]["base"]["ref"] = "main"
+        with self.assertRaisesRegex(VERIFY.VerificationError, "approved canonical epic base"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            )
+
+        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+        fake.api.associations[fake.merges[75]] = [74]
+        with self.assertRaisesRegex(VERIFY.VerificationError, "exact merged pull request"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            )
+
+    def test_failed_ci_and_unresolved_review_threads_fail_closed(self):
+        repository = "tinyhumansai/tinybox"
+        package = VERIFY.MODULE_PACKAGES[repository]
+        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+        run = fake.api.workflow_runs[fake.heads[75]][0]
+        fake.api.workflow_jobs[(run["id"], run["run_attempt"])][1]["conclusion"] = "failure"
+        with self.assertRaisesRegex(VERIFY.VerificationError, "canonical CI job is not successful"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            )
+
+        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+        fake.api.threads[75] = [{"isResolved": False, "isOutdated": False}]
+        with self.assertRaisesRegex(VERIFY.VerificationError, "unresolved review thread"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            )
+
+    def test_synthetic_merge_tree_must_match_canonical_reviewed_merge(self):
+        repository = "tinyhumansai/tinyjuice"
+        package = VERIFY.MODULE_PACKAGES[repository]
+        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+        merge_parents = fake.parents[fake.merges[75]]
+        proof_sha = next(
+            sha for sha, record in fake.api.commit_records.items()
+            if record["parents"] == merge_parents and sha != fake.merges[75]
+        )
+        fake.api.commit_records[proof_sha]["tree_sha"] = "f" * 40
+        with self.assertRaisesRegex(VERIFY.VerificationError, "merge tree"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            )
+
     def test_existing_sdk_and_module_release_sources_remain_byte_identical_to_upstream(self):
         import subprocess
 
