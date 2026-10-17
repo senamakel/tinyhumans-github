@@ -663,7 +663,7 @@ def reviewed_release_fixture(verifier):
         api.workflow_runs[heads[number]] = [{
             "id": run_id,
             "workflow_id": verifier.CI_WORKFLOW_ID,
-            "path": ".github/workflows/ci.yml@refs/pull/75/merge",
+            "path": ".github/workflows/ci.yml",
             "event": "pull_request",
             "status": "completed",
             "conclusion": "success",
