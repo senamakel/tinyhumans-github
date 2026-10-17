@@ -271,7 +271,7 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(self.verify.VerificationError, "trusted CI check"):
             self.verify.verify_reviewed_release(
                 fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
-                "0.1.7", "tinybus", 73,
+                "0.1.7", "tinybus", 75,
             )
 
     def test_tag_binding_detects_movement_before_checkout_or_publish(self):
