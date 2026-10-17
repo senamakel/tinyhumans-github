@@ -2,7 +2,10 @@
 from pathlib import Path
 import importlib.util
 import io
+import email.message
 import unittest
+from unittest.mock import patch
+import urllib.error
 import zipfile
 
 
@@ -130,6 +133,52 @@ class WorkflowPullAssociationTests(unittest.TestCase):
             with self.subTest(case=label), self.assertRaises(self.verify.verify.VerificationError):
                 self.run_verification()
 
+    def test_live_job_log_payload_parser_accepts_utf8_and_bounded_zip(self):
+        payload = valid_checkout_log(base_tests.sha(81), 75).encode("utf-8-sig")
+        self.assertEqual(historical_ci._decode_job_logs(payload), payload.decode("utf-8-sig"))
+        zipped = zip_logs("fmt log")
+        self.assertEqual(historical_ci._decode_job_logs(zipped), "fmt log")
+
+    def test_job_log_redirect_drops_credentials_and_enforces_https_and_size_bounds(self):
+        requests = []
+        response = FakeResponse(b"safe", {"Content-Length": "4"})
+
+        class Opener:
+            def open(self, request, timeout):
+                requests.append(request)
+                if len(requests) == 1:
+                    headers = email.message.Message()
+                    headers["Location"] = "https://logs.example.invalid/private.zip?sig=secret"
+                    raise urllib.error.HTTPError(request.full_url, 302, "Found", headers, None)
+                return response
+
+        with patch.object(self.verify.verify.urllib.request, "build_opener", return_value=Opener()):
+            result = self.verify.verify.GitHubApi("private-token", "tinyhumansai/tinybus").job_logs(123)
+        self.assertEqual(result, b"safe")
+        self.assertIn("Authorization", requests[0].header_items()[0][0])
+        self.assertFalse(any(name.lower() == "authorization" for name, _ in requests[1].header_items()))
+
+        for location in ("http://logs.example.invalid/logs", "https://user@logs.example.invalid/logs"):
+            with self.subTest(location=location):
+                class InvalidRedirectOpener:
+                    def open(self, request, timeout):
+                        headers = email.message.Message()
+                        headers["Location"] = location
+                        raise urllib.error.HTTPError(request.full_url, 302, "Found", headers, None)
+
+                with patch.object(self.verify.verify.urllib.request, "build_opener", return_value=InvalidRedirectOpener()):
+                    with self.assertRaisesRegex(self.verify.verify.VerificationError, "redirect was invalid"):
+                        self.verify.verify.GitHubApi("private-token", "tinyhumansai/tinybus").job_logs(123)
+
+        class OversizedResponse(FakeResponse):
+            pass
+
+        with patch.object(self.verify.verify.urllib.request, "build_opener", return_value=SingleResponseOpener(
+            OversizedResponse(b"too big", {"Content-Length": str(8 * 1024 * 1024 + 1)})
+        )):
+            with self.assertRaisesRegex(self.verify.verify.VerificationError, "size bound"):
+                self.verify.verify.GitHubApi("private-token", "tinyhumansai/tinybus").job_logs(123)
+
     def test_empty_association_with_missing_logs_and_newer_pending_attempt_fails_closed(self):
         fake = base_tests.reviewed_release_fixture(self.verify.verify)
         run = fake.workflow_runs[fake.heads[75]][0]
@@ -183,6 +232,30 @@ def zip_logs(text):
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("0_Set up job.txt", text)
     return output.getvalue()
+
+
+class FakeResponse:
+    def __init__(self, payload, headers):
+        self.payload = payload
+        self.headers = headers
+        self.status = 200
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_args):
+        return False
+
+    def read(self, count=-1):
+        return self.payload[:count]
+
+
+class SingleResponseOpener:
+    def __init__(self, response):
+        self.response = response
+
+    def open(self, _request, timeout):
+        return self.response
 
 
 if __name__ == "__main__":
