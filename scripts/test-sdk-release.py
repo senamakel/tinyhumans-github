@@ -252,6 +252,21 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
             )
 
         fake = reviewed_release_fixture(self.verify)
+        fake.checks[fake.heads[72]].append({
+            "name": self.verify.REQUIRED_CHECKS[0],
+            "app": {"id": self.verify.CHECK_APP_ID},
+            "status": "completed",
+            "conclusion": "failure",
+            "started_at": "2026-10-18T12:00:00Z",
+            "id": 999,
+        })
+        with self.assertRaisesRegex(self.verify.VerificationError, "not successful"):
+            self.verify.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
+                "0.1.7", "tinybus", 73,
+            )
+
+        fake = reviewed_release_fixture(self.verify)
         fake.checks[fake.heads[74]].pop()
         with self.assertRaisesRegex(self.verify.VerificationError, "trusted CI check"):
             self.verify.verify_reviewed_release(
@@ -265,6 +280,60 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
         fake.api.tags["v0.1.7"] = "f" * 40
         with self.assertRaisesRegex(self.verify.VerificationError, "tag no longer resolves"):
             self.verify.verify_tag_binding(fake.api, "v0.1.7", fake.tag_sha)
+
+
+class ReviewedReleaseApiPaginationTests(unittest.TestCase):
+    def setUp(self):
+        path = Path(__file__).parents[1] / ".github/actions/sdk-reviewed-epic-preflight/verify.py"
+        spec = importlib.util.spec_from_file_location("sdk_reviewed_epic_verify_pages", path)
+        self.verify = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(self.verify)
+        self.api = self.verify.GitHubApi("test-token", "tinyhumansai/tinybus")
+
+    def test_rest_pagination_reads_every_page_and_enforces_shape(self):
+        requested = []
+
+        def request(path, **kwargs):
+            requested.append(path)
+            page = int(path.rsplit("page=", 1)[1])
+            if page == 1:
+                return list(range(100))
+            if page == 2:
+                return list(range(100, 200))
+            return [200]
+
+        self.api._request = request
+        self.assertEqual(self.api.rest_pages("pulls/1/reviews"), list(range(201)))
+        self.assertEqual(len(requested), 3)
+
+        self.api._request = lambda *_args, **_kwargs: {"unexpected": []}
+        with self.assertRaisesRegex(self.verify.VerificationError, "invalid page"):
+            self.api.rest_pages("pulls/1/reviews")
+
+    def test_graphql_cursor_pagination_reads_every_review_thread_page(self):
+        cursors = []
+
+        def request(path, **kwargs):
+            cursor = kwargs["payload"]["variables"]["cursor"]
+            cursors.append(cursor)
+            if cursor is None:
+                return {"data": {"repository": {"pullRequest": {
+                    "reviewThreads": {
+                        "nodes": [{"isResolved": True}],
+                        "pageInfo": {"hasNextPage": True, "endCursor": "cursor-1"},
+                    },
+                }}}}
+            return {"data": {"repository": {"pullRequest": {
+                "reviewThreads": {
+                    "nodes": [{"isResolved": True}, {"isResolved": False}],
+                    "pageInfo": {"hasNextPage": False, "endCursor": "cursor-2"},
+                },
+            }}}}
+
+        self.api._request = request
+        nodes = self.api.review_threads_for_pull(12)
+        self.assertEqual([node["isResolved"] for node in nodes], [True, True, False])
+        self.assertEqual(cursors, [None, "cursor-1"])
 
 
 def reviewed_release_fixture(verifier):

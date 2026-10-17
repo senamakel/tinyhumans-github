@@ -239,7 +239,10 @@ class BareHistory:
 
 
 def verify_tag_binding(api, tag: str, expected_sha: str) -> None:
-    expected_sha = _sha(expected_sha, "preflight source"); actual_sha = api.tag_commit(tag)
+    if api.repository != CANONICAL_REPO or not tag.startswith("v") or not SEMVER.fullmatch(tag[1:]):
+        raise VerificationError("release tag binding is restricted to canonical TinyBus semver tags")
+    expected_sha = _sha(expected_sha, "preflight source")
+    actual_sha = api.tag_commit(tag)
     if actual_sha != expected_sha:
         raise VerificationError("release tag no longer resolves to the preflight source SHA")
 
