@@ -170,6 +170,39 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                     [fake.heads[75], fake.heads[73], fake.heads[74], fake.heads[72]],
                 )
 
+    def test_tinymcp_profile_accepts_only_its_canonical_package_and_ci_evidence(self):
+        repository = "tinyhumansai/tinymcp"
+        package = "tinymcp"
+        fake = FIXTURES.module_release_fixture(VERIFY, repository, package)
+        self.assertEqual(
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            ),
+            fake.tag_sha,
+        )
+
+        for bad_repository, bad_package in (
+            ("tinyhumansai/tinymcp-untrusted", package),
+            (repository, "tinymcp-module"),
+        ):
+            with self.subTest(repository=bad_repository, package=bad_package):
+                with self.assertRaises(VERIFY.VerificationError):
+                    VERIFY.verify_reviewed_release(
+                        fake.api, lambda *_: fake.git, bad_repository, "v0.1.7", "0.1.7",
+                        bad_package, 75,
+                    )
+
+        run = fake.api.workflow_runs[fake.heads[75]][0]
+        run["referenced_workflows"][0]["sha"] = "4adc1080fb495098e7af1aade82ed7e6e3c69bb7"
+        run["referenced_workflows"][0]["path"] = (
+            "tinyhumansai/.github/.github/workflows/module-ci.yml@"
+            "4adc1080fb495098e7af1aade82ed7e6e3c69bb7"
+        )
+        with self.assertRaisesRegex(VERIFY.VerificationError, "workflow pin was not trusted"):
+            VERIFY.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, repository, "v0.1.7", "0.1.7", package, 75,
+            )
+
     def test_repository_package_and_tag_are_bound_before_history_admission(self):
         for repository, package in VERIFY.MODULE_PACKAGES.items():
             for bad_repository, bad_package, tag in (
@@ -462,6 +495,17 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         self.assertEqual(pinned.returncode, 0, "pinned action tree is missing")
         self.assertEqual(current.returncode, 0, "current action tree is missing")
         self.assertEqual(pinned.stdout.strip(), current.stdout.strip())
+        ancestor = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", pin, "HEAD"], cwd=ROOT,
+            capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(ancestor.returncode, 0, "action pin must be a reviewed source ancestor")
+        pinned_verifier = subprocess.run(
+            ["git", "show", f"{pin}:.github/actions/module-reviewed-epic-preflight/verify.py"],
+            cwd=ROOT, capture_output=True, text=True, check=False,
+        )
+        self.assertEqual(pinned_verifier.returncode, 0, "pinned action must contain its verifier")
+        self.assertIn('"tinyhumansai/tinymcp"', pinned_verifier.stdout)
 
 
 class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
