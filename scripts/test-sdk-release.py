@@ -290,6 +290,65 @@ class ReviewedEpicSdkReleaseTests(unittest.TestCase):
                 "0.1.7", "tinybus", 75,
             )
 
+    def test_required_checks_must_share_one_canonical_pull_request_run(self):
+        fake = reviewed_release_fixture(self.verify)
+        fake.workflow_runs[fake.heads[72]][0]["repository"] = {
+            "full_name": "someone-else/tinybus"
+        }
+        with self.assertRaisesRegex(self.verify.VerificationError, "workflow run|canonical CI"):
+            self.verify.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
+                "0.1.7", "tinybus", 75,
+            )
+
+        for field, value in (
+            ("path", ".github/workflows/attacker.yml@refs/heads/epic/8056-modules-wiring"),
+            ("event", "workflow_dispatch"),
+            ("head_sha", sha(99)),
+        ):
+            fake = reviewed_release_fixture(self.verify)
+            fake.workflow_runs[fake.heads[72]][0][field] = value
+            with self.subTest(field=field), self.assertRaisesRegex(
+                self.verify.VerificationError, "workflow run|canonical CI"
+            ):
+                self.verify.verify_reviewed_release(
+                    fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
+                    "0.1.7", "tinybus", 75,
+                )
+
+    def test_required_checks_cannot_be_combined_across_workflow_runs(self):
+        fake = reviewed_release_fixture(self.verify)
+        head = fake.heads[72]
+        first = fake.workflow_runs[head][0]
+        second = dict(first, id=first["id"] + 100, check_suite_id=first["check_suite_id"] + 100)
+        fake.workflow_runs[head].append(second)
+        jobs = fake.workflow_jobs[(first["id"], first["run_attempt"])]
+        split = len(jobs) // 2
+        fake.workflow_jobs[(first["id"], first["run_attempt"])] = jobs[:split]
+        fake.workflow_jobs[(second["id"], second["run_attempt"])] = jobs[split:]
+        with self.assertRaisesRegex(self.verify.VerificationError, "trusted CI check"):
+            self.verify.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
+                "0.1.7", "tinybus", 75,
+            )
+
+    def test_newer_failed_workflow_run_cannot_be_masked_by_older_green_run(self):
+        fake = reviewed_release_fixture(self.verify)
+        head = fake.heads[72]
+        previous = fake.workflow_runs[head][0]
+        latest = dict(previous, id=previous["id"] + 100, run_number=previous["run_number"] + 1,
+                      check_suite_id=previous["check_suite_id"] + 100)
+        fake.workflow_runs[head].append(latest)
+        jobs = [dict(job, run_id=latest["id"]) for job in
+                fake.workflow_jobs[(previous["id"], previous["run_attempt"])]]
+        jobs[0]["conclusion"] = "failure"
+        fake.workflow_jobs[(latest["id"], latest["run_attempt"])] = jobs
+        with self.assertRaisesRegex(self.verify.VerificationError, "not successful"):
+            self.verify.verify_reviewed_release(
+                fake.api, lambda *_: fake.git, "tinyhumansai/tinybus", "v0.1.7",
+                "0.1.7", "tinybus", 75,
+            )
+
         fake = reviewed_release_fixture(self.verify)
         fake.checks[fake.heads[72]].append({
             "name": self.verify.REQUIRED_CHECKS[0],
@@ -374,6 +433,23 @@ class ReviewedReleaseApiPaginationTests(unittest.TestCase):
         self.assertEqual([node["isResolved"] for node in nodes], [True, True, False])
         self.assertEqual(cursors, [None, "cursor-1"])
 
+    def test_graphql_pagination_rejects_missing_has_next_page(self):
+        self.api._request = lambda *_args, **_kwargs: {
+            "data": {"repository": {"pullRequest": {
+                "reviewThreads": {"nodes": [], "pageInfo": {}}
+            }}}
+        }
+        with self.assertRaisesRegex(self.verify.VerificationError, "pageInfo|pagination"):
+            self.api.review_threads_for_pull(12)
+
+    def test_main_branch_must_report_protection_enabled(self):
+        self.api._request = lambda *_args, **_kwargs: {
+            "protected": False,
+            "commit": {"sha": sha(1)},
+        }
+        with self.assertRaisesRegex(self.verify.VerificationError, "protected"):
+            self.api.main_sha()
+
     def test_bare_history_fetch_resolves_exact_tag_without_a_worktree(self):
         with tempfile.TemporaryDirectory(prefix="sdk-reviewed-git-fixture-") as temporary:
             repository = Path(temporary) / "source.git"
@@ -441,6 +517,8 @@ def reviewed_release_fixture(verifier):
             self.reviews = {}
             self.threads = {}
             self.checks = {}
+            self.workflow_runs = {}
+            self.workflow_jobs = {}
 
         def tag_commit(self, tag):
             return self.tags[tag]
@@ -462,6 +540,12 @@ def reviewed_release_fixture(verifier):
 
         def check_runs_for_commit(self, commit):
             return self.checks[commit]
+
+        def workflow_runs_for_commit(self, commit):
+            return self.workflow_runs.get(commit, [])
+
+        def jobs_for_workflow_run(self, run_id, attempt):
+            return self.workflow_jobs[(run_id, attempt)]
 
     class Git:
         def __init__(self, parents):
@@ -517,6 +601,40 @@ def reviewed_release_fixture(verifier):
                 "conclusion": "success",
                 "started_at": "2026-10-17T12:00:00Z",
                 "id": index,
+                "head_sha": heads[number],
+                "check_suite": {"id": 2000 + number},
+            }
+            for index, name in enumerate(verifier.REQUIRED_CHECKS)
+        ]
+        run_id = 1000 + number
+        api.workflow_runs[heads[number]] = [{
+            "id": run_id,
+            "workflow_id": 51,
+            "path": ".github/workflows/ci.yml@refs/pull/75/merge",
+            "event": "pull_request",
+            "status": "completed",
+            "conclusion": "success",
+            "head_sha": heads[number],
+            "head_branch": "feature",
+            "head_repository": {"full_name": "tinyhumansai/tinybus"},
+            "repository": {"full_name": "tinyhumansai/tinybus"},
+            "pull_requests": [{"number": number}],
+            "run_number": 100 + number,
+            "run_attempt": 1,
+            "check_suite_id": 2000 + number,
+        }]
+        api.workflow_jobs[(run_id, 1)] = [
+            {
+                "id": 3000 + index,
+                "name": name,
+                "run_id": run_id,
+                "run_attempt": 1,
+                "head_sha": heads[number],
+                "status": "completed",
+                "conclusion": "success",
+                "check_run_url": (
+                    f"https://api.github.com/repos/tinyhumansai/tinybus/check-runs/{index}"
+                ),
             }
             for index, name in enumerate(verifier.REQUIRED_CHECKS)
         ]
