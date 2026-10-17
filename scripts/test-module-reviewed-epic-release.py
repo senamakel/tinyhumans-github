@@ -776,7 +776,7 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
     def test_reviewed_tinydocs_asset_merge_rejects_untrusted_or_incomplete_bundles(self):
         assemble = self.workflow["jobs"]["assemble"]
         step = next(step for step in assemble["steps"] if step.get("name") == "Merge the exact reviewed TinyDocs source bundle")
-        match = re.search(r"(?s)python3 - .*? <<'PYTHON'\n(.*?)\nPYTHON\s*\n\s*fi\s*$", step["run"])
+        match = re.search(r"(?s)python3 - .*? <<'PYTHON'\n(.*?)\nPYTHON\s*$", step["run"])
         self.assertIsNotNone(match, "TinyDocs source merger must remain inline in the trusted shared workflow")
         namespace = {"__name__": "reviewed_source_merge_test"}
         exec(compile(match.group(1), "reviewed-source-merge", "exec"), namespace)
