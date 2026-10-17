@@ -31,7 +31,7 @@ jobs:
       actions: read
     steps:
       - id: verify
-        uses: tinyhumansai/.github/.github/actions/sdk-reviewed-epic-preflight@3f6302c0a6c72b15be66d0611128eb779d1609af
+        uses: tinyhumansai/.github/.github/actions/sdk-reviewed-epic-preflight@095134a799dbd8f36051399a20b347e96410c9bc
         with:
           token: ${{ github.token }}
           tag: ${{ inputs.tag }}
@@ -87,7 +87,7 @@ jobs:
           name: sdk-release-assets
           path: release-assets
       - name: Recheck the release tag against the verified source SHA
-        uses: tinyhumansai/.github/.github/actions/sdk-reviewed-epic-preflight@3f6302c0a6c72b15be66d0611128eb779d1609af
+        uses: tinyhumansai/.github/.github/actions/sdk-reviewed-epic-preflight@095134a799dbd8f36051399a20b347e96410c9bc
         with:
           token: ${{ github.token }}
           tag: ${{ inputs.tag }}
