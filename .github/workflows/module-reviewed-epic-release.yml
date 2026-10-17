@@ -532,7 +532,7 @@ jobs:
               source_paths = [Path(path) for path in source_paths]
               if manifest_path.is_symlink() or not manifest_path.is_file():
                   raise ValueError("checksum manifest path is not a regular file")
-              if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?", version):
+                if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.+-]+)?", version):
                   raise ValueError("source checksum version is invalid")
 
               tables = parse_manifest(manifest_path.read_text(encoding="utf-8"))
