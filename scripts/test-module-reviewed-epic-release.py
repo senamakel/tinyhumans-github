@@ -267,6 +267,17 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
     def test_preflight_action_pin_is_immutable_and_matches_the_complete_action_tree(self):
         import subprocess
 
+        action = yaml.load(
+            (ROOT / ".github/actions/module-reviewed-epic-preflight/action.yml").read_text(),
+            Loader=yaml.BaseLoader,
+        )
+        self.assertEqual(action["runs"]["using"], "composite")
+        action_steps = action["runs"]["steps"]
+        self.assertEqual(len(action_steps), 1)
+        self.assertEqual(action_steps[0]["id"], "verify")
+        self.assertEqual(action_steps[0]["run"], 'python3 "$GITHUB_ACTION_PATH/verify.py"')
+        self.assertNotIn("run", action_steps[0].get("env", {}))
+
         workflow = yaml.load(
             (ROOT / ".github/workflows/module-reviewed-epic-release.yml").read_text(),
             Loader=yaml.BaseLoader,
