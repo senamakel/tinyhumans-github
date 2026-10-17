@@ -76,21 +76,32 @@ def _decode_job_logs(payload: bytes) -> str:
 
 def _checkout_merge_sha(text: str, reviewed_pr: int) -> str:
     lines = text.splitlines()
-    complete_job = [i for i, line in enumerate(lines) if "Complete job name: module-ci / fmt" in line]
+    complete_job = [
+        i for i, line in enumerate(lines)
+        if _runner_setup_message(line) == "Complete job name: module-ci / fmt"
+    ]
     if len(complete_job) != 1:
         raise ValueError("historical fmt job identity was missing or ambiguous")
     setup_end = complete_job[0]
     setup_lines = lines[:setup_end]
-    uses_matches = [
-        (index, match.group(1))
+    uses_records = [
+        (index, _runner_setup_message(line)[len("Uses: "):])
         for index, line in enumerate(setup_lines)
-        if (match := re.search(
-            r"\bUses: tinyhumansai/\.github/\.github/workflows/module-ci\.yml@([0-9a-f]{40})\b",
-            line,
-        ))
+        if (_runner_setup_message(line) or "").startswith("Uses: ")
     ]
-    if len(uses_matches) != 1 or uses_matches[0][1] != MODULE_CI_PIN:
+    inputs_start = next(
+        (index for index, line in enumerate(setup_lines) if "##[group] Inputs" in line),
+        len(setup_lines),
+    )
+    expected_workflow = f"tinyhumansai/.github/.github/workflows/module-ci.yml@{MODULE_CI_PIN}"
+    if (
+        len(uses_records) != 1
+        or uses_records[0][1] != expected_workflow
+        or uses_records[0][0] >= inputs_start
+    ):
         raise ValueError("historical fmt job did not identify the pinned reusable workflow")
+    if any("##[group]Run " in line for line in lines[:setup_end]):
+        raise ValueError("historical fmt job started an action before its runner identity")
     action_starts = [
         index for index, line in enumerate(lines[setup_end + 1:], start=setup_end + 1)
         if "##[group]Run " in line
@@ -140,3 +151,12 @@ def _checkout_merge_sha(text: str, reviewed_pr: int) -> str:
     if resolved is None:
         raise ValueError("historical fmt checkout merge SHA was missing")
     return resolved
+
+
+def _runner_setup_message(line: str) -> str | None:
+    match = re.fullmatch(
+        r"module-ci / fmt\tUNKNOWN STEP\t[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        r"[0-9:.]+Z (.*)",
+        line,
+    )
+    return None if match is None else match.group(1)

@@ -111,6 +111,7 @@ class WorkflowPullAssociationTests(unittest.TestCase):
         synthetic = base_tests.sha(81)
         for label, log, pin, parents in (
             ("late prelude", valid_checkout_log(synthetic, 75, late_prelude=True), historical_ci.MODULE_CI_PIN, None),
+            ("attacker Uses with spoofed input", attacker_prelude_log(synthetic, 75), historical_ci.MODULE_CI_PIN, None),
             ("wrong pr", valid_checkout_log(synthetic, 74), historical_ci.MODULE_CI_PIN, None),
             ("duplicate checkout", valid_checkout_log(synthetic, 75, duplicate_checkout=True), historical_ci.MODULE_CI_PIN, None),
             ("wrong parents", valid_checkout_log(synthetic, 75), historical_ci.MODULE_CI_PIN, (base_tests.sha(1), base_tests.sha(2))),
@@ -206,24 +207,38 @@ class WorkflowPullAssociationTests(unittest.TestCase):
 
 def valid_checkout_log(synthetic_sha, pull_number, *, late_prelude=False, duplicate_checkout=False):
     prelude = (
-        "Uses: tinyhumansai/.github/.github/workflows/module-ci.yml@"
-        f"{historical_ci.MODULE_CI_PIN}\n##[group] Inputs\n##[endgroup]\n"
+        runner_line("Uses: tinyhumansai/.github/.github/workflows/module-ci.yml@"
+                    f"{historical_ci.MODULE_CI_PIN}")
+        + "\n" + runner_line("##[group] Inputs") + "\n" + runner_line("##[endgroup]") + "\n"
     )
     lines = [] if late_prelude else [prelude]
     lines.extend([
-        "Complete job name: module-ci / fmt",
-        f"##[group]Run actions/checkout@{historical_ci.CHECKOUT_ACTION_PIN}",
-        f"[command]/usr/bin/git fetch +{synthetic_sha}:refs/remotes/pull/{pull_number}/merge",
-        f"[command]/usr/bin/git checkout refs/remotes/pull/{pull_number}/merge",
-        f"Note: switching to 'refs/remotes/pull/{pull_number}/merge'.",
-        "[command]/usr/bin/git log -1 --format=%H",
-        synthetic_sha,
+        runner_line("Complete job name: module-ci / fmt"),
+        runner_line(f"##[group]Run actions/checkout@{historical_ci.CHECKOUT_ACTION_PIN}"),
+        runner_line(f"[command]/usr/bin/git fetch +{synthetic_sha}:refs/remotes/pull/{pull_number}/merge"),
+        runner_line(f"[command]/usr/bin/git checkout refs/remotes/pull/{pull_number}/merge"),
+        runner_line(f"Note: switching to 'refs/remotes/pull/{pull_number}/merge'."),
+        runner_line("[command]/usr/bin/git log -1 --format=%H"),
+        runner_line(synthetic_sha),
     ])
     if duplicate_checkout:
-        lines.append(f"##[group]Run actions/checkout@{historical_ci.CHECKOUT_ACTION_PIN}")
+        lines.append(runner_line(f"##[group]Run actions/checkout@{historical_ci.CHECKOUT_ACTION_PIN}"))
     if late_prelude:
-        lines.append(prelude)
-    lines.append("##[group]Run dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249")
+        lines.append(runner_line(prelude.strip()))
+    lines.append(runner_line("##[group]Run dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249"))
+    return "\n".join(lines)
+
+
+def runner_line(message):
+    return f"module-ci / fmt\tUNKNOWN STEP\t2026-10-17T09:38:22.8052667Z {message}"
+
+
+def attacker_prelude_log(synthetic_sha, pull_number):
+    lines = valid_checkout_log(synthetic_sha, pull_number).splitlines()
+    lines[0] = runner_line("Uses: attacker/evil/.github/workflows/spoof.yml@" + "a" * 40)
+    lines.insert(3, runner_line(
+        "Uses: tinyhumansai/.github/.github/workflows/module-ci.yml@" + historical_ci.MODULE_CI_PIN
+    ))
     return "\n".join(lines)
 
 
