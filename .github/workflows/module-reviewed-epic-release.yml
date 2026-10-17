@@ -352,7 +352,7 @@ jobs:
           path: release-assets
           pattern: module-*
           merge-multiple: true
-      - name: Require the complete archive set and create checksum manifest
+      - name: Require the complete module archive set
         shell: bash
         env:
           MODULE_ASSET: ${{ needs.preflight.outputs.module-asset }}
@@ -370,9 +370,6 @@ jobs:
             echo "expected $expected module archives, found ${#archives[@]}" >&2
             exit 1
           fi
-          checksum_args=()
-          for archive in "${archives[@]}"; do checksum_args+=(--path "$archive"); done
-          cargo run --locked --manifest-path vendor/tinybus/Cargo.toml --features cli --bin tinybus -- modules checksum "${checksum_args[@]}" --output release-assets/checksum.toml
       - if: needs.preflight.outputs.module-source-bundle == 'tinydocs'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
@@ -430,6 +427,61 @@ jobs:
           if __name__ == "__main__":
               merge("tinydocs", sys.argv[1], sys.argv[2], sys.argv[3])
           PYTHON
+      - name: Checksum the exact module and source asset set
+        shell: bash
+        env:
+          MODULE_ASSET: ${{ needs.preflight.outputs.module-asset }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_SOURCE_BUNDLE: ${{ needs.preflight.outputs.module-source-bundle }}
+        run: |
+          set -euo pipefail
+          module_archives=()
+          while IFS= read -r archive; do module_archives+=("$archive"); done < <(
+            find release-assets -maxdepth 1 -type f \
+              \( -name "${MODULE_ASSET}-${MODULE_VERSION}-*.tar.gz" \
+              -o -name "${MODULE_ASSET}-${MODULE_VERSION}-*.zip" \) -print | sort
+          )
+          [[ "${#module_archives[@]}" -eq 17 ]] || {
+            echo "expected 17 module archives in checksum input, found ${#module_archives[@]}" >&2
+            exit 1
+          }
+          source_assets=()
+          if [[ "$MODULE_SOURCE_BUNDLE" == "tinydocs" ]]; then
+            while IFS= read -r asset; do source_assets+=("$asset"); done < <(
+              find release-assets -maxdepth 1 -type f \
+                \( -name "tinydocs-bus-${MODULE_VERSION}.crate" \
+                -o -name 'tinybus-source-*.tar.gz' \) -print | sort
+            )
+            [[ "${#source_assets[@]}" -eq 2 ]] || {
+              echo "expected both TinyDocs source assets in checksum input, found ${#source_assets[@]}" >&2
+              exit 1
+            }
+            source_package_count=0
+            source_archive_count=0
+            for asset in "${source_assets[@]}"; do
+              [[ -f "$asset" && ! -L "$asset" ]] || {
+                echo "TinyDocs source checksum input is not a regular file: $asset" >&2
+                exit 1
+              }
+              case "$(basename "$asset")" in
+                "tinydocs-bus-${MODULE_VERSION}.crate") ((source_package_count += 1)) ;;
+                tinybus-source-*.tar.gz) [[ "$(basename "$asset")" =~ ^tinybus-source-[0-9a-f]{12}\.tar\.gz$ ]] && ((source_archive_count += 1)) ;;
+                *) echo "unexpected TinyDocs source checksum input: $asset" >&2; exit 1 ;;
+              esac
+            done
+            [[ "$source_package_count" -eq 1 && "$source_archive_count" -eq 1 ]] || {
+              echo "TinyDocs source checksum inputs do not match the compiled-in bundle" >&2
+              exit 1
+            }
+          elif [[ -n "$MODULE_SOURCE_BUNDLE" ]]; then
+            echo "source bundle is outside the compiled-in profile" >&2
+            exit 2
+          fi
+          checksum_args=()
+          for archive in "${module_archives[@]}" "${source_assets[@]}"; do
+            checksum_args+=(--path "$archive")
+          done
+          cargo run --locked --manifest-path vendor/tinybus/Cargo.toml --features cli --bin tinybus -- modules checksum "${checksum_args[@]}" --output release-assets/checksum.toml
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: module-release-assets
