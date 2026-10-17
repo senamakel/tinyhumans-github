@@ -133,7 +133,7 @@ The verifier's profiles are literal and closed:
 | --- | --- | --- | ---: | --- | --- | --- | --- | --- |
 | `tinyhumansai/tinyconnectors` | `tinyconnectors` | `tinyconnectors` | `345777017` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none | none | none |
 | `tinyhumansai/tinybox` | `tinybox-module` | `tinybox` | `334144667` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none | none | none |
-| `tinyhumansai/tinyjuice` | `tinyjuice-module` | `tinyjuice` | `307270985` | `3e87ade76b622844985d0c665a3b075313e4545c` | `Cargo.toml` | `docs/specs/tinybus-module.md` | none | none |
+| `tinyhumansai/tinyjuice` | `tinyjuice-module` | `tinyjuice-module` | `307270985` | `3e87ade76b622844985d0c665a3b075313e4545c` | `Cargo.toml` | `docs/specs/tinybus-module.md` | none | none |
 | `tinyhumansai/tinywallet` | `tinywallet-module` | `tinywallet-module` | `331024528` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none | none | none |
 | `tinyhumansai/tinymcp` | `tinymcp` | `tinymcp` | `339480400` | `62c8ae0468f3882b75947d5cba9687e609ce1fed` | `Cargo.toml` | none | none | none |
 | `tinyhumansai/tinychannels` | `tinychannels-module` | `tinychannels-module` | `307289287` | `3e87ade76b622844985d0c665a3b075313e4545c` | `Cargo.toml` | none | none | none |
