@@ -58,6 +58,23 @@ class WorkflowPullAssociationTests(unittest.TestCase):
         with self.assertRaisesRegex(self.verify.verify.VerificationError, "workflow run|pull request"):
             self.run_verification()
 
+    def test_exact_pr_number_with_wrong_base_or_head_binding_is_rejected(self):
+        mutations = (
+            (75, "base", {"ref": "main", "repo": {"full_name": "tinyhumansai/tinybus"}}),
+            (75, "base", {"ref": "epic/8056-modules-wiring", "repo": {"full_name": "other/tinybus"}}),
+            (75, "head", {"sha": "f" * 40, "ref": "feature", "repo": {"full_name": "senamakel/tinybus"}}),
+            (75, "head", {"sha": base_tests.sha(15), "ref": "other-branch", "repo": {"full_name": "senamakel/tinybus"}}),
+            (75, "head", {"sha": base_tests.sha(15), "ref": "feature", "repo": {"full_name": "other/tinybus"}}),
+        )
+        for number, field, value in mutations:
+            fake = base_tests.reviewed_release_fixture(self.verify.verify)
+            fake.api.pulls[number][field] = value
+            self.fake = fake
+            with self.subTest(field=field, value=value), self.assertRaises(
+                self.verify.verify.VerificationError
+            ):
+                self.run_verification()
+
 
 if __name__ == "__main__":
     unittest.main()
