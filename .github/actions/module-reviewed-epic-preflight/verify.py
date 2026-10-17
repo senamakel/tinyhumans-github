@@ -23,14 +23,17 @@ MODULE_PROFILES = {
     "tinyhumansai/tinyconnectors": {
         "package": "tinyconnectors", "asset": "tinyconnectors", "manifest": "Cargo.toml",
         "extra_files": [], "workflow_id": 345777017,
+        "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
     },
     "tinyhumansai/tinybox": {
         "package": "tinybox-module", "asset": "tinybox", "manifest": "Cargo.toml",
         "extra_files": [], "workflow_id": 334144667,
+        "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
     },
     "tinyhumansai/tinyjuice": {
         "package": "tinyjuice-module", "asset": "tinyjuice", "manifest": "Cargo.toml",
         "extra_files": ["docs/specs/tinybus-module.md"], "workflow_id": 307270985,
+        "module_ci_sha": "3e87ade76b622844985d0c665a3b075313e4545c",
     },
 }
 MODULE_PACKAGES = {repo: profile["package"] for repo, profile in MODULE_PROFILES.items()}
@@ -558,7 +561,9 @@ def _verify_required_checks(api, pull: dict) -> None:
         jobs = api.jobs_for_workflow_run(candidate["id"], candidate["run_attempt"])
         fmt_job = _fmt_job_for_run(jobs, candidate, pull)
         try:
-            proof = read_ci_checkout_proof(api, candidate, fmt_job)
+            proof = read_ci_checkout_proof(
+                api, candidate, fmt_job, MODULE_PROFILES[api.repository]["module_ci_sha"]
+            )
         except ValueError as error:
             raise VerificationError(str(error)) from error
         if proof["pull_number"] != pull["number"]:
@@ -622,6 +627,7 @@ def _verify_required_checks(api, pull: dict) -> None:
                 verify_ci_merge_provenance(
                     api, workflow_run, job, pull, workflow_association, checkout_proof,
                     repository=api.repository, epic_base=EPIC_BASE,
+                    module_ci_pin=MODULE_PROFILES[api.repository]["module_ci_sha"],
                 )
             except ValueError as error:
                 raise VerificationError(str(error)) from error
