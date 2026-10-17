@@ -1,0 +1,346 @@
+name: Reviewed module epic release
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: Existing tag at the exact merged PR commit.
+        type: string
+        required: true
+      version:
+        description: Module version without the leading v.
+        type: string
+        required: true
+      reviewed-pr:
+        description: Positive canonical PR number whose merge commit is tagged.
+        type: number
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      source-sha: ${{ steps.verify.outputs.source-sha }}
+      module-package: ${{ steps.verify.outputs.module-package }}
+      module-asset: ${{ steps.verify.outputs.module-asset }}
+      module-manifest: ${{ steps.verify.outputs.module-manifest }}
+      extra-packaged-files: ${{ steps.verify.outputs.extra-packaged-files }}
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      actions: read
+    steps:
+      - id: verify
+        uses: tinyhumansai/.github/.github/actions/module-reviewed-epic-preflight@51a877c3b2ae625e1a452cf65ed4149f606bc5ba
+        with:
+          token: ${{ github.token }}
+          tag: ${{ inputs.tag }}
+          version: ${{ inputs.version }}
+          reviewed-pr: ${{ inputs.reviewed-pr }}
+
+  validate:
+    name: validate reviewed release inputs
+    runs-on: ubuntu-latest
+    needs: [preflight]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.preflight.outputs.source-sha }}
+          submodules: recursive
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - name: Validate package metadata and scripts at the admitted source SHA
+        shell: bash
+        env:
+          VERSION: ${{ inputs.version }}
+          MODULE_CRATE: ${{ needs.preflight.outputs.module-package }}
+          MODULE_ASSET: ${{ needs.preflight.outputs.module-asset }}
+          MODULE_MANIFEST: ${{ needs.preflight.outputs.module-manifest }}
+          EXTRA_PACKAGED_FILES: ${{ needs.preflight.outputs.extra-packaged-files }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([+-][0-9A-Za-z.-]+)?$ ]]
+          [[ "$MODULE_CRATE" =~ ^[A-Za-z0-9_-]+$ ]]
+          [[ "$MODULE_ASSET" =~ ^[A-Za-z0-9_-]+$ ]]
+          [[ "$MODULE_MANIFEST" == "Cargo.toml" ]]
+          jq -e 'type == "array" and all(.[]; type == "string")' <<<"$EXTRA_PACKAGED_FILES" >/dev/null
+          required=(scripts/build-module.sh scripts/build-module.ps1 scripts/verify-module.sh scripts/verify-module.ps1 scripts/test-distro.sh)
+          for script in "${required[@]}"; do
+            [[ -f "$script" ]] || { echo "release source is missing $script" >&2; exit 1; }
+          done
+          for script in scripts/build-module.sh scripts/verify-module.sh scripts/test-distro.sh; do
+            [[ -x "$script" ]] || { echo "release source script is not executable: $script" >&2; exit 1; }
+          done
+          metadata=$(cargo metadata --manifest-path "$MODULE_MANIFEST" --format-version 1 --no-deps)
+          module_version=$(jq -r --arg name "$MODULE_CRATE" '[.packages[] | select(.name == $name) | .version] | if length == 1 then .[0] else "" end' <<<"$metadata")
+          [[ "$module_version" == "$VERSION" ]] || {
+            echo "module crate $MODULE_CRATE is version ${module_version:-missing}, expected $VERSION" >&2
+            exit 1
+          }
+
+  native:
+    name: verify and package (${{ matrix.host }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: ubuntu-22.04-x86_64
+            runner: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+          - host: ubuntu-22.04-arm64
+            runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+          - host: ubuntu-24.04-x86_64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - host: ubuntu-24.04-arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - host: macos-15-x86_64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - host: macos-15-arm64
+            runner: macos-15
+            target: aarch64-apple-darwin
+          - host: macos-26-x86_64
+            runner: macos-26-intel
+            target: x86_64-apple-darwin
+          - host: macos-26-arm64
+            runner: macos-26
+            target: aarch64-apple-darwin
+          - host: windows-2022-x86_64
+            runner: windows-2022
+            target: x86_64-pc-windows-msvc
+          - host: windows-2025-x86_64
+            runner: windows-2025
+            target: x86_64-pc-windows-msvc
+          - host: windows-11-arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    needs: [preflight, validate]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.preflight.outputs.source-sha }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+        with:
+          targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          key: ${{ matrix.host }}
+      - name: Build module package
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          MODULE_CRATE: ${{ needs.preflight.outputs.module-package }}
+          MODULE_ASSET: ${{ needs.preflight.outputs.module-asset }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_TARGET: ${{ matrix.target }}
+          MODULE_HOST: ${{ matrix.host }}
+          EXTRA_PACKAGED_FILES: ${{ needs.preflight.outputs.extra-packaged-files }}
+        run: scripts/build-module.sh --crate "$MODULE_CRATE" --version "$MODULE_VERSION" --target "$MODULE_TARGET" --host "$MODULE_HOST" --extra-files-json "$EXTRA_PACKAGED_FILES" --output-dir release-assets
+      - name: Build module package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          MODULE_CRATE: ${{ needs.preflight.outputs.module-package }}
+          MODULE_ASSET: ${{ needs.preflight.outputs.module-asset }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_TARGET: ${{ matrix.target }}
+          MODULE_HOST: ${{ matrix.host }}
+          EXTRA_PACKAGED_FILES: ${{ needs.preflight.outputs.extra-packaged-files }}
+        run: ./scripts/build-module.ps1 -Crate $env:MODULE_CRATE -Version $env:MODULE_VERSION -Target $env:MODULE_TARGET -HostKey $env:MODULE_HOST -ExtraFilesJson $env:EXTRA_PACKAGED_FILES -OutputDir release-assets
+      - name: Verify built module
+        if: runner.os != 'Windows'
+        shell: bash
+        env:
+          MODULE_CRATE: ${{ needs.preflight.outputs.module-package }}
+          MODULE_ASSET: ${{ needs.preflight.outputs.module-asset }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_HOST: ${{ matrix.host }}
+        run: scripts/verify-module.sh --archive "release-assets/${MODULE_ASSET}-${MODULE_VERSION}-${MODULE_HOST}.tar.gz"
+      - name: Verify built module
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          MODULE_CRATE: ${{ needs.preflight.outputs.module-package }}
+          MODULE_ASSET: ${{ needs.preflight.outputs.module-asset }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_HOST: ${{ matrix.host }}
+        run: ./scripts/verify-module.ps1 -Archive "release-assets/$env:MODULE_ASSET-$env:MODULE_VERSION-$env:MODULE_HOST.zip"
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: module-${{ matrix.host }}
+          path: release-assets/${{ needs.preflight.outputs.module-asset }}-${{ inputs.version }}-${{ matrix.host }}.*
+          if-no-files-found: error
+          retention-days: 1
+
+  distro:
+    name: verify and package (${{ matrix.host }})
+    needs: [preflight, validate]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - host: fedora-43-x86_64
+            image: fedora:43@sha256:a651ddf48ea28a06ed4e1e6519f51c9f47e7a5a138722ade87369b8fbb7e5b42
+            target: x86_64-unknown-linux-gnu
+          - host: fedora-43-arm64
+            image: fedora:43@sha256:a651ddf48ea28a06ed4e1e6519f51c9f47e7a5a138722ade87369b8fbb7e5b42
+            target: aarch64-unknown-linux-gnu
+          - host: fedora-44-x86_64
+            image: fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+            target: x86_64-unknown-linux-gnu
+          - host: fedora-44-arm64
+            image: fedora:44@sha256:43b29f65a41eb9c35e1cd5323e3bdf3b655c2357a9f4f1ff2f9c2798e5045d80
+            target: aarch64-unknown-linux-gnu
+          - host: archlinux-x86_64
+            image: archlinux:base-devel@sha256:996c3a1d6b0d87b01242f6fcd8cfa3ad3eece1a67ab5c8f108e20af1d7b97bdd
+            target: x86_64-unknown-linux-gnu
+          - host: archlinux-arm64
+            image: menci/archlinuxarm:base-devel@sha256:e9caa68ff4162ca297ed6098375c04db6a825a58c0f0e446a7c90cb280310296
+            target: aarch64-unknown-linux-gnu
+    runs-on: ${{ contains(matrix.host, 'arm64') && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.preflight.outputs.source-sha }}
+          submodules: recursive
+          persist-credentials: false
+      - name: Build and verify distro module package
+        shell: bash
+        env:
+          MODULE_CRATE: ${{ needs.preflight.outputs.module-package }}
+          MODULE_ASSET: ${{ needs.preflight.outputs.module-asset }}
+          MODULE_VERSION: ${{ inputs.version }}
+          MODULE_TARGET: ${{ matrix.target }}
+          MODULE_HOST: ${{ matrix.host }}
+          DISTRO_IMAGE: ${{ matrix.image }}
+          EXTRA_PACKAGED_FILES: ${{ needs.preflight.outputs.extra-packaged-files }}
+        run: scripts/test-distro.sh "$DISTRO_IMAGE" --crate "$MODULE_CRATE" --version "$MODULE_VERSION" --target "$MODULE_TARGET" --host "$MODULE_HOST" --extra-files-json "$EXTRA_PACKAGED_FILES" --output-dir release-assets
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: module-${{ matrix.host }}
+          path: release-assets/${{ needs.preflight.outputs.module-asset }}-${{ inputs.version }}-${{ matrix.host }}.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  assemble:
+    name: assemble release assets
+    needs: [preflight, validate, native, distro]
+    if: >-
+      always() && needs.preflight.result == 'success' &&
+      needs.validate.result == 'success' && needs.native.result == 'success' &&
+      needs.distro.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.preflight.outputs.source-sha }}
+          submodules: recursive
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable as of 2026-10-10
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: release-assets
+          pattern: module-*
+          merge-multiple: true
+      - name: Require the complete archive set and create checksum manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          archives=(release-assets/*.tar.gz release-assets/*.zip)
+          expected=17
+          if [[ "${#archives[@]}" -ne "$expected" ]]; then
+            echo "expected $expected module archives, found ${#archives[@]}" >&2
+            exit 1
+          fi
+          checksum_args=()
+          for archive in "${archives[@]}"; do checksum_args+=(--path "$archive"); done
+          cargo run --locked --manifest-path vendor/tinybus/Cargo.toml --features cli --bin tinybus -- modules checksum "${checksum_args[@]}" --output release-assets/checksum.toml
+      - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
+        with:
+          name: module-release-assets
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 1
+
+  publish:
+    name: create immutable release
+    needs: [preflight, validate, native, distro, assemble]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: release-assets
+          name: module-release-assets
+      - name: Recheck release tag against the admitted source SHA
+        uses: tinyhumansai/.github/.github/actions/module-reviewed-epic-preflight@51a877c3b2ae625e1a452cf65ed4149f606bc5ba
+        with:
+          token: ${{ github.token }}
+          tag: ${{ inputs.tag }}
+          package: ${{ needs.preflight.outputs.module-package }}
+          mode: tag-only
+          expected-sha: ${{ needs.preflight.outputs.source-sha }}
+      - name: Create the immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          MODULE_CRATE: ${{ needs.preflight.outputs.module-package }}
+          MODULE_ASSET: ${{ needs.preflight.outputs.module-asset }}
+          MODULE_VERSION: ${{ inputs.version }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_type=()
+          if [[ "${MODULE_VERSION%%+*}" == *-* ]]; then release_type+=(--prerelease); fi
+          if gh release view "$RELEASE_TAG" --json assets >/dev/null 2>&1; then
+            release=$(gh release view "$RELEASE_TAG" --json assets,isDraft,isPrerelease)
+            is_draft=$(jq -r '.isDraft' <<<"$release")
+            is_prerelease=$(jq -r '.isPrerelease' <<<"$release")
+            existing=$(jq -r '.assets[].name' <<<"$release" | sort)
+            expected=$(find release-assets -maxdepth 1 -type f -printf '%f\n' | sort)
+            if [[ "$existing" != "$expected" ]]; then
+              echo "release $RELEASE_TAG already exists with a different asset set" >&2
+              exit 1
+            fi
+            existing_assets=$(mktemp -d "${RUNNER_TEMP:-/tmp}/module-release-assets.XXXXXX")
+            gh release download "$RELEASE_TAG" --dir "$existing_assets" --clobber
+            while IFS= read -r expected_file; do
+              name=$(basename "$expected_file")
+              expected_digest=$(sha256sum "$expected_file" | awk '{print $1}')
+              actual_digest=$(sha256sum "$existing_assets/$name" | awk '{print $1}')
+              if [[ "$expected_digest" != "$actual_digest" ]]; then
+                echo "release $RELEASE_TAG asset $name does not match the assembled artifact" >&2
+                exit 1
+              fi
+            done < <(find release-assets -maxdepth 1 -type f -print | sort)
+            rm -rf "$existing_assets"
+            expected_prerelease=false
+            if [[ ${#release_type[@]} -gt 0 ]]; then expected_prerelease=true; fi
+            if [[ "$is_prerelease" != "$expected_prerelease" ]]; then
+              echo "release $RELEASE_TAG has the wrong prerelease state" >&2
+              exit 1
+            fi
+            if [[ "$is_draft" == "true" ]]; then
+              gh release edit "$RELEASE_TAG" --draft=false "${release_type[@]}"
+              echo "published verified draft release $RELEASE_TAG"
+            else
+              echo "release $RELEASE_TAG already exists with verified asset contents; skipping retry"
+            fi
+          else
+            gh release create "$RELEASE_TAG" release-assets/* --title "$MODULE_CRATE $RELEASE_TAG" --verify-tag "${release_type[@]}"
+          fi

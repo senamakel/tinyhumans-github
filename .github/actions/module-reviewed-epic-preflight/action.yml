@@ -1,0 +1,56 @@
+name: Verify reviewed module epic release
+description: Verify an allowlisted module epic PR chain and its CI before source execution.
+inputs:
+  token:
+    description: Read-only GITHUB_TOKEN for canonical PR, review, check, and Actions APIs.
+    required: true
+  tag:
+    description: Existing version tag at the exact reviewed PR merge commit.
+    required: true
+  version:
+    description: Version without the leading v.
+    required: false
+  package:
+    description: Must match the compiled-in package for github.repository.
+    required: false
+  reviewed-pr:
+    description: Positive PR number whose exact merge commit the release tag names.
+    required: false
+  mode:
+    description: reviewed validates the PR chain; tag-only rechecks the tag binding.
+    required: false
+    default: reviewed
+  expected-sha:
+    description: Previously verified tag commit to require in tag-only mode.
+    required: false
+outputs:
+  source-sha:
+    description: Exact merge commit admitted for module source execution.
+    value: ${{ steps.verify.outputs.source-sha }}
+  module-package:
+    description: Compiled-in Cargo module package for the canonical caller repository.
+    value: ${{ steps.verify.outputs.module-package }}
+  module-asset:
+    description: Compiled-in public module asset stem for the canonical caller repository.
+    value: ${{ steps.verify.outputs.module-asset }}
+  module-manifest:
+    description: Compiled-in Cargo manifest path for the canonical caller repository.
+    value: ${{ steps.verify.outputs.module-manifest }}
+  extra-packaged-files:
+    description: Compiled-in JSON array of extra package files for the canonical caller repository.
+    value: ${{ steps.verify.outputs.extra-packaged-files }}
+runs:
+  using: composite
+  steps:
+    - id: verify
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        GH_REPO: ${{ github.repository }}
+        TAG: ${{ inputs.tag }}
+        VERSION: ${{ inputs.version }}
+        PACKAGE: ${{ inputs.package }}
+        REVIEWED_PR: ${{ inputs.reviewed-pr }}
+        MODE: ${{ inputs.mode }}
+        EXPECTED_SHA: ${{ inputs.expected-sha }}
+      run: python3 "$GITHUB_ACTION_PATH/verify.py"

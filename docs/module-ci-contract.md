@@ -112,6 +112,32 @@ and its main-ancestor gate. Remove the temporary caller/path before the epic's
 final rollup; after the epic is merged to main, release from the main-based
 entrypoint.
 
+For the same migration only, `tinyconnectors`, `tinybox`, and `tinyjuice` may
+temporarily call `module-reviewed-epic-release.yml` with a positive
+`reviewed-pr`. Its verifier has a compiled-in canonical repository/package/
+workflow-ID map and checks the complete reviewed epic path and the same 13
+trusted module CI checks before any tagged source is checked out. All four
+source-executing jobs use the exact verified merge SHA. Package, asset stem,
+manifest, and additional package files are fixed by the repository profile;
+callers cannot choose those values. The workflow always builds and verifies
+all 11 native and 6 distro artifacts, creates the checksum manifest, and gives
+release write permission only to the publish job, which rechecks the tag
+against the verified SHA. It has no crates.io path. Remove this temporary
+workflow and action before the epic's final rollup; once the epic reaches main,
+use the unchanged `module-release.yml` entrypoint.
+
+The verifier's initial profiles are literal and closed:
+
+| Canonical repository | Cargo package | Asset stem | CI workflow ID | Manifest | Extra package files |
+| --- | --- | --- | ---: | --- | --- |
+| `tinyhumansai/tinyconnectors` | `tinyconnectors` | `tinyconnectors` | `345777017` | `Cargo.toml` | none |
+| `tinyhumansai/tinybox` | `tinybox-module` | `tinybox` | `334144667` | `Cargo.toml` | none |
+| `tinyhumansai/tinyjuice` | `tinyjuice-module` | `tinyjuice` | `307270985` | `Cargo.toml` | `docs/specs/tinybus-module.md` |
+
+Add another repository only through a separately reviewed update to this
+allowlist, including its actual canonical CI workflow identity and package
+profile.
+
 ## Drift detection
 
 The shared repository's CI runs offline regression tests on every PR. On every

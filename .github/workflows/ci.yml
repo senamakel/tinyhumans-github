@@ -22,6 +22,7 @@ jobs:
       - run: python3 -m pip install PyYAML==6.0.3
       - run: python3 scripts/test-sdk-release.py
       - run: python3 scripts/test-sdk-pr-association.py
+      - run: python3 scripts/test-module-reviewed-epic-release.py
       - run: python3 scripts/test-module-drift.py
   module-drift:
     if: github.event_name != 'pull_request'
