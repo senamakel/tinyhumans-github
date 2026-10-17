@@ -370,7 +370,52 @@ jobs:
         shell: bash
         env:
           MODULE_VERSION: ${{ inputs.version }}
-        run: python3 scripts/merge-reviewed-source-assets.py --bundle tinydocs --version "$MODULE_VERSION" --source source-assets --destination release-assets
+        run: |
+          python3 - "$MODULE_VERSION" source-assets release-assets <<'PYTHON'
+          from pathlib import Path
+          import os
+          import re
+          import shutil
+          import sys
+          import tempfile
+
+          SEMVER = re.compile(r"^[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$")
+          TINYBUS_ARCHIVE = re.compile(r"^tinybus-source-[0-9a-f]{12}\\.tar\\.gz$")
+
+          def merge(bundle, version, source, destination):
+              if bundle != "tinydocs":
+                  raise ValueError("unsupported reviewed source bundle")
+              if not SEMVER.fullmatch(version):
+                  raise ValueError("source bundle version is invalid")
+              source, destination = Path(source), Path(destination)
+              if source.is_symlink() or not source.is_dir() or destination.is_symlink() or not destination.is_dir():
+                  raise ValueError("source and release asset paths must be real directories")
+              entries = list(source.iterdir())
+              package_name = f"tinydocs-bus-{version}.crate"
+              if (
+                  len(entries) != 2
+                  or any(entry.is_symlink() or not entry.is_file() for entry in entries)
+                  or {entry.name for entry in entries if entry.name.endswith(".crate")} != {package_name}
+                  or sum(bool(TINYBUS_ARCHIVE.fullmatch(entry.name)) for entry in entries) != 1
+                  or any(entry.name != package_name and not TINYBUS_ARCHIVE.fullmatch(entry.name) for entry in entries)
+              ):
+                  raise ValueError("source bundle must contain the exact source asset set")
+              if any((destination / entry.name).exists() or (destination / entry.name).is_symlink() for entry in entries):
+                  raise ValueError("source asset collides with a verified release asset")
+              staging = Path(tempfile.mkdtemp(prefix=".tinydocs-source-assets-", dir=destination))
+              try:
+                  for entry in entries:
+                      shutil.copyfile(entry, staging / entry.name)
+                  staged = list(staging.iterdir())
+                  if len(staged) != len(entries) or any(entry.is_symlink() or not entry.is_file() for entry in staged):
+                      raise ValueError("staged source bundle is incomplete")
+                  for entry in staged:
+                      os.replace(entry, destination / entry.name)
+              finally:
+                  shutil.rmtree(staging)
+
+          merge("tinydocs", sys.argv[1], sys.argv[2], sys.argv[3])
+          PYTHON
       - uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808 # v4.3.3
         with:
           name: module-release-assets
