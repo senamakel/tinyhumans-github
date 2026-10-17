@@ -192,6 +192,7 @@ class WorkflowPullAssociationTests(unittest.TestCase):
             if job_id == reviewed_job_id else original_logs(job_id)
         )
         actual_parents = fake.parents[fake.merges[75]]
+        fake.api.commit_records[synthetic] = dict(fake.api.commit_records[fake.merges[75]])
         fake.api.commit_records[synthetic]["parents"] = actual_parents
         self.fake = fake
         self.run_verification()
@@ -216,6 +217,7 @@ class WorkflowPullAssociationTests(unittest.TestCase):
             fake.api.job_logs = lambda _job_id, contents=log: zip_logs(contents)
             actual_parents = fake.parents[fake.merges[75]]
             synthetic_parents = parents or actual_parents
+            fake.api.commit_records[synthetic] = dict(fake.api.commit_records[fake.merges[75]])
             fake.api.commit_records[synthetic]["parents"] = synthetic_parents
             self.fake = fake
             with self.subTest(case=label), self.assertRaises(self.verify.verify.VerificationError):
@@ -290,8 +292,9 @@ class WorkflowPullAssociationTests(unittest.TestCase):
         pending = dict(fake.workflow_runs[head][0], run_attempt=2, status="in_progress", conclusion=None)
         pending["pull_requests"] = []
         fake.workflow_runs[head].append(pending)
-        fake.workflow_jobs[(pending["id"], pending["run_attempt"])] = fake.workflow_jobs[
-            (pending["id"], 1)
+        fake.workflow_jobs[(pending["id"], pending["run_attempt"])] = [
+            dict(job, run_attempt=pending["run_attempt"])
+            for job in fake.workflow_jobs[(pending["id"], 1)]
         ]
         self.fake = fake
         with self.assertRaisesRegex(self.verify.verify.VerificationError, "latest.*not successful"):
