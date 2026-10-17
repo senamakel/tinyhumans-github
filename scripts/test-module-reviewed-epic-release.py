@@ -618,6 +618,8 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         self.assertEqual(pinned_verifier.returncode, 0, "pinned action must contain its verifier")
         self.assertIn('"tinyhumansai/tinymcp"', pinned_verifier.stdout)
         self.assertIn('"tinyhumansai/tinychannels"', pinned_verifier.stdout)
+        self.assertIn('"tinyhumansai/tinydocs"', pinned_verifier.stdout)
+        self.assertIn('"tinyhumansai/tinyvoice"', pinned_verifier.stdout)
 
 
 class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
@@ -820,6 +822,14 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
             "libasound2-dev libx11-dev libxtst-dev libxi-dev",
         )
         self.assertIn("scripts/test-distro.sh", str(distro))
+        apt_steps = [step for step in native["steps"] if "apt-get install" in step.get("run", "")]
+        self.assertEqual(len(apt_steps), 1)
+        self.assertEqual(apt_steps[0]["if"], "runner.os == 'Linux' && needs.preflight.outputs.module-apt-packages != ''")
+        self.assertIn("MODULE_APT_PACKAGES", apt_steps[0]["env"])
+        self.assertIn("module package and manifest are outside the compiled-in profile", str(validate))
+        self.assertIn("tinyvoice-module:crates/tinyvoice-module/Cargo.toml", str(validate))
+        self.assertIn("Ubuntu build dependencies are outside the compiled-in profile", str(validate))
+        self.assertEqual(len(distro["strategy"]["matrix"]["include"]), 6)
         self.assertIn("MODULE_APT_PACKAGES", str(native))
 
 
