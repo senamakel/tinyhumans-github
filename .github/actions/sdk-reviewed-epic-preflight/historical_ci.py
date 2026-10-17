@@ -186,7 +186,7 @@ def _checkout_merge_sha(text: str, reviewed_pr: int) -> str:
 
 def _runner_setup_message(line: str) -> str | None:
     match = re.fullmatch(
-        r"module-ci / fmt\tUNKNOWN STEP\t[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+        r"(?:module-ci / fmt\tUNKNOWN STEP\t)?[0-9]{4}-[0-9]{2}-[0-9]{2}T"
         r"[0-9:.]+Z (.*)",
         line,
     )
