@@ -696,7 +696,9 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         self.assertEqual(set(inputs), {"tag", "version", "reviewed-pr"})
 
     def test_validate_job_admits_exactly_the_compiled_in_package_manifest_pairs(self):
-        validate = str(self.workflow["jobs"]["validate"])
+        validate = "\n".join(
+            step.get("run", "") for step in self.workflow["jobs"]["validate"]["steps"]
+        )
         match = re.search(
             r'case "\$MODULE_CRATE:\$MODULE_MANIFEST" in\n(.*?)\n\s*\*\)',
             validate,
