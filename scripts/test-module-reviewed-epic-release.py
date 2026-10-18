@@ -762,7 +762,15 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
             set(jobs["publish"]["needs"]),
             {"preflight", "validate", "native", "distro", "assemble"},
         )
-        self.assertNotIn("if", jobs["publish"])
+        publish_if = jobs["publish"].get("if", "")
+        self.assertIn("always()", publish_if)
+        self.assertIn("!cancelled()", publish_if)
+        for prerequisite in jobs["publish"]["needs"]:
+            with self.subTest(publish_prerequisite=prerequisite):
+                self.assertIn(
+                    f"needs.{prerequisite}.result == 'success'",
+                    publish_if,
+                )
         publish = str(jobs["publish"])
         self.assertIn("tag-only", publish)
         self.assertIn("needs.preflight.outputs.source-sha", publish)
