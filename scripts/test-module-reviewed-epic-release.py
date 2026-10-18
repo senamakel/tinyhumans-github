@@ -69,7 +69,7 @@ def parse_checksum_tables(source):
 
 
 class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
-    def test_only_eight_exact_canonical_repository_package_workflow_profiles_exist(self):
+    def test_only_twelve_exact_canonical_repository_package_workflow_profiles_exist(self):
         self.assertEqual(
             VERIFY.CI_WORKFLOW_IDS,
             {
@@ -81,6 +81,10 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinychannels": 307289287,
                 "tinyhumansai/tinydocs": 331024957,
                 "tinyhumansai/tinyvoice": 333928426,
+                "tinyhumansai/tinymemes": 381779763,
+                "tinyhumansai/tinysearch": 366985739,
+                "tinyhumansai/tinyhosts": 336527620,
+                "tinyhumansai/tinyflows": 305876256,
             },
         )
         self.assertEqual(
@@ -94,6 +98,10 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinychannels": "3e87ade76b622844985d0c665a3b075313e4545c",
                 "tinyhumansai/tinydocs": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
                 "tinyhumansai/tinyvoice": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+                "tinyhumansai/tinymemes": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+                "tinyhumansai/tinysearch": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+                "tinyhumansai/tinyhosts": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+                "tinyhumansai/tinyflows": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
             },
         )
         self.assertEqual(
@@ -107,6 +115,10 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
                 "tinyhumansai/tinychannels": "tinychannels-module",
                 "tinyhumansai/tinydocs": "tinydocs-module",
                 "tinyhumansai/tinyvoice": "tinyvoice-module",
+                "tinyhumansai/tinymemes": "tinymemes-module",
+                "tinyhumansai/tinysearch": "tinysearch",
+                "tinyhumansai/tinyhosts": "tinyhosts",
+                "tinyhumansai/tinyflows": "tinyflows-module",
             },
         )
         self.assertEqual(VERIFY.CHECK_APP_ID, 15368)
@@ -122,10 +134,34 @@ class ModuleReviewedReleaseVerifierTests(unittest.TestCase):
         self.assertEqual(
             {repo: profile["manifest"] for repo, profile in VERIFY.MODULE_PROFILES.items()},
             {
-                repo: ("crates/tinyvoice-module/Cargo.toml" if repo == "tinyhumansai/tinyvoice" else "Cargo.toml")
+                repo: ("crates/tinyvoice-module/Cargo.toml" if repo == "tinyhumansai/tinyvoice"
+                       else "crates/tinymemes-module/Cargo.toml" if repo == "tinyhumansai/tinymemes"
+                       else "crates/tinyflows-module/Cargo.toml" if repo == "tinyhumansai/tinyflows"
+                       else "Cargo.toml")
                 for repo in VERIFY.MODULE_PROFILES
             },
         )
+        self.assertEqual(
+            {repo: VERIFY.MODULE_PROFILES[repo]["asset"] for repo in (
+                "tinyhumansai/tinymemes", "tinyhumansai/tinysearch",
+                "tinyhumansai/tinyhosts", "tinyhumansai/tinyflows",
+            )},
+            {
+                "tinyhumansai/tinymemes": "tinymemes-module",
+                "tinyhumansai/tinysearch": "tinysearch",
+                "tinyhumansai/tinyhosts": "tinyhosts",
+                "tinyhumansai/tinyflows": "tinyflows-module",
+            },
+        )
+        for repository in (
+            "tinyhumansai/tinymemes", "tinyhumansai/tinysearch",
+            "tinyhumansai/tinyhosts", "tinyhumansai/tinyflows",
+        ):
+            with self.subTest(repository=repository):
+                self.assertEqual(VERIFY.MODULE_PROFILES[repository]["extra_files"], [])
+                self.assertEqual(VERIFY.MODULE_PROFILES[repository].get("apt_packages", ""), "")
+                self.assertEqual(VERIFY.MODULE_PROFILES[repository]["module_ci_sha"],
+                                 "4adc1080fb495098e7af1aade82ed7e6e3c69bb7")
         self.assertEqual(VERIFY.MODULE_PROFILES["tinyhumansai/tinywallet"]["asset"], "tinywallet-module")
         self.assertEqual(VERIFY.MODULE_PROFILES["tinyhumansai/tinywallet"]["extra_files"], [])
         self.assertEqual(VERIFY.MODULE_PROFILES["tinyhumansai/tinychannels"]["asset"], "tinychannels-module")
