@@ -607,6 +607,17 @@ jobs:
   publish:
     name: create immutable release
     needs: [preflight, validate, native, distro, assemble]
+    # `source_assets` intentionally skips for non-TinyDocs releases. Allow that
+    # skip to flow through the successful assemble job, while still refusing
+    # failed, skipped, or cancelled required prerequisites (and cancellation).
+    if: >-
+      always() &&
+      !cancelled() &&
+      needs.preflight.result == 'success' &&
+      needs.validate.result == 'success' &&
+      needs.native.result == 'success' &&
+      needs.distro.result == 'success' &&
+      needs.assemble.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
