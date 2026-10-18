@@ -695,6 +695,21 @@ class ModuleReviewedReleaseWorkflowTests(unittest.TestCase):
         inputs = self.workflow["on"]["workflow_call"]["inputs"]
         self.assertEqual(set(inputs), {"tag", "version", "reviewed-pr"})
 
+    def test_validate_job_admits_exactly_the_compiled_in_package_manifest_pairs(self):
+        validate = str(self.workflow["jobs"]["validate"])
+        match = re.search(
+            r'case "\$MODULE_CRATE:\$MODULE_MANIFEST" in\n(.*?)\n\s*\*\)',
+            validate,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(match, "release metadata must use a closed package/manifest case")
+        admitted = set(re.findall(r"[A-Za-z0-9_-]+:[A-Za-z0-9_./-]+", match.group(1)))
+        expected = {
+            f"{profile['package']}:{profile['manifest']}"
+            for profile in VERIFY.MODULE_PROFILES.values()
+        }
+        self.assertEqual(admitted, expected)
+
     def test_all_source_execution_jobs_require_preflight_and_use_verified_sha(self):
         jobs = self.workflow["jobs"]
         self.assertEqual(self.workflow["permissions"], {"contents": "read"})
