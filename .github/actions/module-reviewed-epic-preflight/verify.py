@@ -63,6 +63,28 @@ MODULE_PROFILES = {
         "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
         "apt_packages": "libasound2-dev libx11-dev libxtst-dev libxi-dev",
     },
+    "tinyhumansai/tinymemes": {
+        "package": "tinymemes-module", "asset": "tinymemes-module",
+        "manifest": "crates/tinymemes-module/Cargo.toml", "extra_files": [],
+        "workflow_id": 381779763,
+        "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+    },
+    "tinyhumansai/tinysearch": {
+        "package": "tinysearch", "asset": "tinysearch", "manifest": "Cargo.toml",
+        "extra_files": [], "workflow_id": 366985739,
+        "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+    },
+    "tinyhumansai/tinyhosts": {
+        "package": "tinyhosts", "asset": "tinyhosts", "manifest": "Cargo.toml",
+        "extra_files": [], "workflow_id": 336527620,
+        "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+    },
+    "tinyhumansai/tinyflows": {
+        "package": "tinyflows-module", "asset": "tinyflows-module",
+        "manifest": "crates/tinyflows-module/Cargo.toml", "extra_files": [],
+        "workflow_id": 305876256,
+        "module_ci_sha": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+    },
 }
 MODULE_PACKAGES = {repo: profile["package"] for repo, profile in MODULE_PROFILES.items()}
 CI_WORKFLOW_IDS = {repo: profile["workflow_id"] for repo, profile in MODULE_PROFILES.items()}

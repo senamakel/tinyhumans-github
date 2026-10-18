@@ -16,6 +16,10 @@ TRUSTED_MODULE_CI_PINS = {
     "tinyhumansai/tinychannels": "3e87ade76b622844985d0c665a3b075313e4545c",
     "tinyhumansai/tinydocs": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
     "tinyhumansai/tinyvoice": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+    "tinyhumansai/tinymemes": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+    "tinyhumansai/tinysearch": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+    "tinyhumansai/tinyhosts": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
+    "tinyhumansai/tinyflows": "4adc1080fb495098e7af1aade82ed7e6e3c69bb7",
 }
 
 

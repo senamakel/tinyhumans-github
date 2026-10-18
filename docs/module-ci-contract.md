@@ -113,7 +113,8 @@ final rollup; after the epic is merged to main, release from the main-based
 entrypoint.
 
 For the same migration only, `tinyconnectors`, `tinybox`, `tinyjuice`,
-`tinywallet`, `tinymcp`, `tinychannels`, `tinydocs`, and `tinyvoice` may
+`tinywallet`, `tinymcp`, `tinychannels`, `tinydocs`, `tinyvoice`, `tinymemes`,
+`tinysearch`, `tinyhosts`, and `tinyflows` may
 temporarily call `module-reviewed-epic-release.yml` with a positive
 `reviewed-pr`. Its verifier has a compiled-in canonical repository/package/
 workflow-ID map and checks the complete reviewed epic path and the same 13
@@ -139,6 +140,10 @@ The verifier's profiles are literal and closed:
 | `tinyhumansai/tinychannels` | `tinychannels-module` | `tinychannels-module` | `307289287` | `3e87ade76b622844985d0c665a3b075313e4545c` | `Cargo.toml` | none | none | none |
 | `tinyhumansai/tinydocs` | `tinydocs-module` | `tinydocs-module` | `331024957` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | `docs/specs/tinybus-module.md` | none | `tinydocs` |
 | `tinyhumansai/tinyvoice` | `tinyvoice-module` | `tinyvoice-module` | `333928426` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `crates/tinyvoice-module/Cargo.toml` | none | `libasound2-dev libx11-dev libxtst-dev libxi-dev` | none |
+| `tinyhumansai/tinymemes` | `tinymemes-module` | `tinymemes-module` | `381779763` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `crates/tinymemes-module/Cargo.toml` | none | none | none |
+| `tinyhumansai/tinysearch` | `tinysearch` | `tinysearch` | `366985739` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none | none | none |
+| `tinyhumansai/tinyhosts` | `tinyhosts` | `tinyhosts` | `336527620` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `Cargo.toml` | none | none | none |
+| `tinyhumansai/tinyflows` | `tinyflows-module` | `tinyflows-module` | `305876256` | `4adc1080fb495098e7af1aade82ed7e6e3c69bb7` | `crates/tinyflows-module/Cargo.toml` | none | none | none |
 
 The TinyJuice profile keeps the pin used by its reviewed release workflow. At
 that revision the check names and fmt checkout match the newer module CI
@@ -183,6 +188,23 @@ The TinyVoice profile fixes its metadata manifest at
 run the admitted source's `test-distro.sh`, which installs the corresponding
 audio and X11 development packages through `install-distro-packages.sh`.
 Neither the manifest nor dependency list is a caller input.
+
+TinySearch and TinyHosts already call the reviewed `module-ci.yml` revision
+`4adc1080fb495098e7af1aade82ed7e6e3c69bb7`, with their repository-owned
+coverage, module-E2E, and feature-test scripts. Their current calls require no
+additional Ubuntu packages; TinyHosts' Fedora/Arch package installer handles
+the distro build tools inside those containers.
+
+The TinyMemes and TinyFlows profiles reserve their canonical workflow IDs and
+package identities, but do not make their current `main` workflows eligible.
+Before a reviewed release can pass, each owner must call the pinned shared
+`module-ci.yml` with the three required scripts so the verifier can prove the
+same 13 checks. Both also need the reviewed release workflow's fixed packaging
+scripts, including the six distro builds; package names, manifests, assets,
+and dependencies remain fixed in this table and are never caller inputs. The
+TinyFlows owner must also align the module crate version with the reviewed
+release version at the admitted tag. Until those owner changes land, missing
+checks or packaging files keep the release fail-closed.
 
 Add another repository only through a separately reviewed update to this
 allowlist, including its actual canonical CI workflow identity and package
