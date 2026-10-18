@@ -37,7 +37,7 @@ jobs:
       actions: read
     steps:
       - id: verify
-        uses: tinyhumansai/.github/.github/actions/module-reviewed-epic-preflight@7b921fdcfd680e469fc0f370493095d03e414689
+        uses: tinyhumansai/.github/.github/actions/module-reviewed-epic-preflight@9dcf331a313b1ddf3fa88e77f84f2650e96a0349
         with:
           token: ${{ github.token }}
           tag: ${{ inputs.tag }}
@@ -72,7 +72,7 @@ jobs:
           [[ "$MODULE_CRATE" =~ ^[A-Za-z0-9_-]+$ ]]
           [[ "$MODULE_ASSET" =~ ^[A-Za-z0-9_-]+$ ]]
           case "$MODULE_CRATE:$MODULE_MANIFEST" in
-            tinyconnectors:Cargo.toml|tinybox-module:Cargo.toml|tinyjuice-module:Cargo.toml|tinywallet-module:Cargo.toml|tinymcp:Cargo.toml|tinychannels-module:Cargo.toml|tinydocs-module:Cargo.toml|tinyvoice-module:crates/tinyvoice-module/Cargo.toml) ;;
+            tinyconnectors:Cargo.toml|tinybox-module:Cargo.toml|tinyjuice-module:Cargo.toml|tinywallet-module:Cargo.toml|tinymcp:Cargo.toml|tinychannels-module:Cargo.toml|tinydocs-module:Cargo.toml|tinysearch:Cargo.toml|tinyhosts:Cargo.toml|tinyvoice-module:crates/tinyvoice-module/Cargo.toml|tinymemes-module:crates/tinymemes-module/Cargo.toml|tinyflows-module:crates/tinyflows-module/Cargo.toml) ;;
             *) echo "module package and manifest are outside the compiled-in profile" >&2; exit 2 ;;
           esac
           case "$MODULE_APT_PACKAGES" in
@@ -616,7 +616,7 @@ jobs:
           path: release-assets
           name: module-release-assets
       - name: Recheck release tag against the admitted source SHA
-        uses: tinyhumansai/.github/.github/actions/module-reviewed-epic-preflight@7b921fdcfd680e469fc0f370493095d03e414689
+        uses: tinyhumansai/.github/.github/actions/module-reviewed-epic-preflight@9dcf331a313b1ddf3fa88e77f84f2650e96a0349
         with:
           token: ${{ github.token }}
           tag: ${{ inputs.tag }}
