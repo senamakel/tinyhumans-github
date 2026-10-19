@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+# Keep mold selected even when rustc adds -fuse-ld=lld or coverage sets RUSTFLAGS.
+set -euo pipefail
+exec clang "$@" --ld-path=/opt/mold/bin/mold

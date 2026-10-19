@@ -5,6 +5,24 @@
 # Downloaded tool archives are version-pinned and checked against their
 # sha256 digests. Bump a version in this file, and the image is rebuilt and
 # published from main (see .github/workflows/rust-ci-image.yml).
+# bubblewrap, built from the pinned upstream release. Ubuntu 22.04 ships 0.6.1,
+# but TinyBox needs >= 0.8 (`--disable-userns`) before it will report a jail.
+# Only the binary is copied into the final image: root-owned, not setuid.
+FROM ubuntu:22.04 AS bwrap-build
+ARG BUBBLEWRAP_VERSION=0.13.1
+ARG BUBBLEWRAP_SHA256=0e85c8702248b8dd64144f594147553650cdd0e4c951690345faace79c217c4d
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential ca-certificates curl libcap-dev meson ninja-build pkg-config xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+RUN set -eu; \
+    curl -fsSL --retry 3 -o /tmp/bwrap.tar.xz "https://github.com/containers/bubblewrap/releases/download/v${BUBBLEWRAP_VERSION}/bubblewrap-${BUBBLEWRAP_VERSION}.tar.xz"; \
+    echo "${BUBBLEWRAP_SHA256}  /tmp/bwrap.tar.xz" | sha256sum -c --quiet -; \
+    mkdir /tmp/src; tar -xJf /tmp/bwrap.tar.xz -C /tmp/src --strip-components=1; \
+    meson setup /tmp/src/_build /tmp/src --prefix=/usr -Dman=disabled -Dbash_completion=disabled \
+        -Dzsh_completion=disabled -Dselinux=disabled -Dtests=false; \
+    ninja -C /tmp/src/_build; \
+    install -D -m 0755 -o root -g root /tmp/src/_build/bwrap /out/bwrap
+
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -20,21 +38,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
         libasound2-dev libxdo-dev libxtst-dev libx11-dev libevdev-dev \
         xvfb xauth at-spi2-core dbus-x11 webkit2gtk-driver \
+        libcap2 awscli openssh-client uidmap slirp4netns iptables iproute2 \
     && rm -rf /var/lib/apt/lists/*
 
-# MongoDB 7.0 and mongosh, for tests that need a real server
+# MongoDB and mongosh, for tests that need a real server
 # (`mongod --fork`, replica sets with `rs.initiate`): the runner's service
 # containers and `docker run` are not available inside a container job.
+ARG MONGODB_MAJOR=7.0
 ARG MONGODB_VERSION=7.0.45
-RUN curl -fsSL https://www.mongodb.org/static/pgp/server-7.0.asc \
-        | gpg --dearmor -o /usr/share/keyrings/mongodb-server-7.0.gpg \
-    && gpg --no-default-keyring --keyring /usr/share/keyrings/mongodb-server-7.0.gpg \
-        --list-keys --with-colons | grep -q '^fpr:::::::::E58830201F7DD82CD808AA84160D26BB1785BA38:' \
-    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/mongodb-server-7.0.gpg] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/7.0 multiverse" \
-        > /etc/apt/sources.list.d/mongodb-org-7.0.list \
+ARG MONGODB_KEY_FINGERPRINT=E58830201F7DD82CD808AA84160D26BB1785BA38
+RUN curl -fsSL https://www.mongodb.org/static/pgp/server-${MONGODB_MAJOR}.asc \
+        | gpg --dearmor -o /usr/share/keyrings/mongodb-server-${MONGODB_MAJOR}.gpg \
+    && gpg --no-default-keyring --keyring /usr/share/keyrings/mongodb-server-${MONGODB_MAJOR}.gpg \
+        --list-keys --with-colons | grep -q "^fpr:::::::::${MONGODB_KEY_FINGERPRINT}:" \
+    && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/mongodb-server-${MONGODB_MAJOR}.gpg] https://repo.mongodb.org/apt/ubuntu jammy/mongodb-org/${MONGODB_MAJOR} multiverse" \
+        > /etc/apt/sources.list.d/mongodb-org-${MONGODB_MAJOR}.list \
     && apt-get update && apt-get install -y --no-install-recommends \
         "mongodb-org-server=${MONGODB_VERSION}" mongodb-mongosh \
     && rm -rf /var/lib/apt/lists/*
+
+ENV RUST_CI_MONGODB_MAJOR=${MONGODB_MAJOR}
 
 # Rust: the stable release CI builds with, the MSRV it is checked against,
 # and the components clippy, fmt and cargo-llvm-cov need. Both are installed
@@ -58,6 +81,10 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no
     && rustup default stable \
     && chmod -R a+w "${RUSTUP_HOME}" "${CARGO_HOME}"
 
+# bubblewrap >= 0.8 for TinyBox's jail (the distro package is 0.6.1). Not setuid:
+# it needs unprivileged user namespaces from the host kernel.
+COPY --from=bwrap-build --chmod=0755 /out/bwrap /usr/bin/bwrap
+
 # Cargo tools, as release binaries checked against pinned digests.
 ARG CARGO_LLVM_COV_VERSION=0.9.1
 ARG CARGO_LLVM_COV_SHA256=b3f68e625481fed9b16444174f3fa5ebcdbde4a1878803a35eabe2dcefcdc41a
@@ -69,6 +96,8 @@ ARG SCCACHE_VERSION=0.18.0
 ARG SCCACHE_SHA256=45f1447fbe231e3037bde351ef70677dd212216c8d62ae7ca409fecc4d6acc89
 ARG TINYMOLD_VERSION=0.3.0
 ARG TINYMOLD_SHA256=3268dc5ef2f9ab75f5a36fde29142e289a2a9e33440fc788802da99f1be41193
+ARG MOLD_VERSION=2.40.4
+ARG MOLD_SHA256=4c999e19ffa31afa5aa429c679b665d5e2ca5a6b6832ad4b79668e8dcf3d8ec1
 RUN set -eu; dl="$(mktemp -d)"; \
     fetch() { curl -fsSL --retry 3 -o "${dl}/$1" "$2" && echo "$3  ${dl}/$1" | sha256sum -c --quiet -; }; \
     fetch llvm-cov.tgz "https://github.com/taiki-e/cargo-llvm-cov/releases/download/v${CARGO_LLVM_COV_VERSION}/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz" "${CARGO_LLVM_COV_SHA256}"; \
@@ -82,7 +111,16 @@ RUN set -eu; dl="$(mktemp -d)"; \
     fetch tinymold.tgz "https://github.com/tinyhumansai/tinymold/releases/download/v${TINYMOLD_VERSION}/tinymold-${TINYMOLD_VERSION}-x86_64-unknown-linux-gnu.tar.gz" "${TINYMOLD_SHA256}"; \
     mkdir "${dl}/tm"; tar -xzf "${dl}/tinymold.tgz" -C "${dl}/tm"; \
     install -m 0755 "$(find "${dl}/tm" -type f -name tinymold | head -n1)" /usr/local/bin/tinymold; \
+    fetch mold.tgz "https://github.com/rui314/mold/releases/download/v${MOLD_VERSION}/mold-${MOLD_VERSION}-x86_64-linux.tar.gz" "${MOLD_SHA256}"; \
+    mkdir -p /opt/mold; tar -xzf "${dl}/mold.tgz" -C /opt/mold --strip-components=1; \
+    ln -sf /opt/mold/bin/mold /usr/local/bin/mold; \
+    ln -sf /opt/mold/bin/mold /usr/local/bin/ld.mold; \
     rm -rf "${dl}"
+
+# A target linker survives cargo-llvm-cov replacing RUSTFLAGS and the EX63
+# guest moving CARGO_HOME onto its cache disk. This image is linux/amd64.
+COPY --chmod=0755 mold-linker /usr/local/bin/rust-mold-linker
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=/usr/local/bin/rust-mold-linker
 
 # Node 24 and OpenHuman's package manager, available before pnpm install.
 ARG NODE_VERSION=24.22.0
