@@ -5,6 +5,24 @@
 # Downloaded tool archives are version-pinned and checked against their
 # sha256 digests. Bump a version in this file, and the image is rebuilt and
 # published from main (see .github/workflows/rust-ci-image.yml).
+# bubblewrap, built from the pinned upstream release. Ubuntu 22.04 ships 0.6.1,
+# but TinyBox needs >= 0.8 (`--disable-userns`) before it will report a jail.
+# Only the binary is copied into the final image: root-owned, not setuid.
+FROM ubuntu:22.04 AS bwrap-build
+ARG BUBBLEWRAP_VERSION=0.13.1
+ARG BUBBLEWRAP_SHA256=0e85c8702248b8dd64144f594147553650cdd0e4c951690345faace79c217c4d
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential ca-certificates curl libcap-dev meson ninja-build pkg-config xz-utils \
+    && rm -rf /var/lib/apt/lists/*
+RUN set -eu; \
+    curl -fsSL --retry 3 -o /tmp/bwrap.tar.xz "https://github.com/containers/bubblewrap/releases/download/v${BUBBLEWRAP_VERSION}/bubblewrap-${BUBBLEWRAP_VERSION}.tar.xz"; \
+    echo "${BUBBLEWRAP_SHA256}  /tmp/bwrap.tar.xz" | sha256sum -c --quiet -; \
+    mkdir /tmp/src; tar -xJf /tmp/bwrap.tar.xz -C /tmp/src --strip-components=1; \
+    meson setup /tmp/src/_build /tmp/src --prefix=/usr -Dman=disabled -Dbash_completion=disabled \
+        -Dzsh_completion=disabled -Dselinux=disabled -Dtests=false; \
+    ninja -C /tmp/src/_build; \
+    install -D -m 0755 -o root -g root /tmp/src/_build/bwrap /out/bwrap
+
 FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -20,7 +38,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
         libasound2-dev libxdo-dev libxtst-dev libx11-dev libevdev-dev \
         xvfb xauth at-spi2-core dbus-x11 webkit2gtk-driver \
-        awscli openssh-client uidmap slirp4netns iptables iproute2 \
+        libcap2 awscli openssh-client uidmap slirp4netns iptables iproute2 \
     && rm -rf /var/lib/apt/lists/*
 
 # MongoDB and mongosh, for tests that need a real server
@@ -62,6 +80,10 @@ RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --no
         -c rustfmt -c clippy -c llvm-tools-preview \
     && rustup default stable \
     && chmod -R a+w "${RUSTUP_HOME}" "${CARGO_HOME}"
+
+# bubblewrap >= 0.8 for TinyBox's jail (the distro package is 0.6.1). Not setuid:
+# it needs unprivileged user namespaces from the host kernel.
+COPY --from=bwrap-build --chmod=0755 /out/bwrap /usr/bin/bwrap
 
 # Cargo tools, as release binaries checked against pinned digests.
 ARG CARGO_LLVM_COV_VERSION=0.9.1
