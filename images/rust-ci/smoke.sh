@@ -45,6 +45,14 @@ iptables --version
 command -v newuidmap
 command -v newgidmap
 patchelf --version
+
+# TinyBox needs bubblewrap >= 0.8 (--disable-userns), root-owned and not setuid.
+bwrap_path="$(command -v bwrap)"
+test "$bwrap_path" = /usr/bin/bwrap
+test "$(stat -c '%U:%G %a' /usr/bin/bwrap)" = "root:root 755"
+bwrap_version="$(bwrap --version | awk '{print $2}')"
+test "$(printf '%s\n0.8.0\n' "$bwrap_version" | sort -V | head -n1)" = 0.8.0
+bwrap --help | grep -q -- --disable-userns
 tauri-driver --help
 WebKitWebDriver --help
 
