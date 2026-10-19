@@ -96,6 +96,15 @@ UIDs/GIDs for its job user. No root daemon or privileged Docker socket is baked
 into this image. Verify a rootless build in the target VM before enabling deploys;
 image build smoke tests cannot prove the host kernel supports user namespaces.
 
+## bubblewrap
+
+`/usr/bin/bwrap` is bubblewrap 0.13.1, built in a Dockerfile stage from the
+checksum-verified upstream release tarball (Ubuntu 22.04's package is 0.6.1,
+which lacks `--disable-userns`, so TinyBox reports no isolation). It is
+root-owned, mode 0755 and not setuid, so a jail needs unprivileged user
+namespaces from the VM kernel (`CONFIG_USER_NS`, `user.max_user_namespaces` > 0).
+The image build smoke test checks the version and the `--disable-userns` flag.
+
 ## MongoDB 8 variant
 
 OpenIntents requires MongoDB 8. The publisher also builds `mongo8-latest`,
